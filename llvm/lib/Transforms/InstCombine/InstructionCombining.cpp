@@ -3972,11 +3972,15 @@ static bool combineInstructionsOverFunction(
   if (ShouldLowerDbgDeclare)
     MadeIRChange = LowerDbgDeclare(F);
 
+  Task T({}, "InstCombine");
+
   // Iterate while there is work to do.
   unsigned Iteration = 0;
   while (true) {
     ++NumWorklistIterations;
     ++Iteration;
+
+    T.advance();
 
     if (Iteration > InfiniteLoopDetectionThreshold) {
       report_fatal_error(

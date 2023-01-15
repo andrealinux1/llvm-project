@@ -1261,6 +1261,10 @@ template <typename ContainerTy> auto make_second_range(ContainerTy &&c) {
       });
 }
 
+template <typename R> auto make_address_range(R &&Range) {
+  return map_range(Range, [](auto &Element) { return &Element; });
+}
+
 //===----------------------------------------------------------------------===//
 //     Extra additions to <utility>
 //===----------------------------------------------------------------------===//

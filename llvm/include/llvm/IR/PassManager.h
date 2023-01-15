@@ -48,6 +48,7 @@
 #include "llvm/IR/PassManagerInternal.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/TypeName.h"
 #include <algorithm>
@@ -502,8 +503,10 @@ public:
     if (DebugLogging)
       dbgs() << "Starting " << getTypeName<IRUnitT>() << " pass manager run.\n";
 
+    Task T(Passes.size(), "LLVM Passes");
     for (unsigned Idx = 0, Size = Passes.size(); Idx != Size; ++Idx) {
       auto *P = Passes[Idx].get();
+      T.advance(P->name());
 
       // Check the PassInstrumentation's BeforePass callbacks before running the
       // pass, skip its execution completely if asked to (callback returns
