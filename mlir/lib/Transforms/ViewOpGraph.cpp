@@ -16,6 +16,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/GraphWriter.h"
+#include "llvm/Support/raw_ostream.h"
 #include <utility>
 #include <optional>
 
@@ -28,6 +29,7 @@ using namespace mlir;
 
 static const StringRef kLineStyleControlFlow = "dashed";
 static const StringRef kLineStyleDataFlow = "solid";
+static const StringRef kLineStyleRegionControlFlow = "bold";
 static const StringRef kShapeNode = "ellipse";
 static const StringRef kShapeNone = "plain";
 
@@ -82,6 +84,10 @@ public:
 /// Note: See https://www.graphviz.org/doc/info/lang.html for more information
 /// about the Graphviz DOT language.
 class PrintOpPass : public impl::ViewOpGraphBase<PrintOpPass> {
+private:
+  llvm::DenseMap<mlir::Block *, Node> blockFirstNodeMap;
+  llvm::DenseMap<mlir::Block *, Node> blockLastNodeMap;
+
 public:
   PrintOpPass(raw_ostream &os) : os(os) {}
   PrintOpPass(const PrintOpPass &o) : PrintOpPass(o.os.getOStream()) {}
@@ -250,7 +256,13 @@ private:
   /// Process a block. Emit a cluster and one node per block argument and
   /// operation inside the cluster.
   void processBlock(Block &block) {
-    emitClusterStmt([&]() {
+
+    // Prepare the name for the block node
+    std::string nodeName;
+    llvm::raw_string_ostream blockNameStr(nodeName);
+    block.printAsOperand(blockNameStr);
+    Node node;
+    node = emitClusterStmt([&]() {
       for (BlockArgument &blockArg : block.getArguments())
         valueToNode[blockArg] = emitNodeStmt(getLabel(blockArg));
 
@@ -261,9 +273,18 @@ private:
         if (printControlFlowEdges && prevNode)
           emitEdgeStmt(*prevNode, nextNode, /*label=*/"",
                        kLineStyleControlFlow);
+
+        // If we are at first iteration, save the first operand node for the
+        // incoming edges.
+        if (not prevNode) {
+          blockFirstNodeMap[&block] = nextNode;
+        }
         prevNode = nextNode;
       }
-    });
+
+      // Save the last operation for the outgoing edges.
+      blockLastNodeMap[&block] = *prevNode;
+    }, nodeName);
   }
 
   /// Process an operation. If the operation has regions, emit a cluster.
@@ -301,6 +322,20 @@ private:
   void processRegion(Region &region) {
     for (Block &block : region.getBlocks())
       processBlock(block);
+
+    // Print control flow edges between blocks if the option is activated.
+    if (printRegionControlFlowEdges) {
+      for (Block &block : region.getBlocks()) {
+        for (Block *successor : block.getSuccessors()) {
+          assert(blockLastNodeMap.count(&block) == 1);
+          Node blockNode = blockLastNodeMap[&block];
+          assert(blockFirstNodeMap.count(successor) == 1);
+          Node successorNode = blockFirstNodeMap[successor];
+          emitEdgeStmt(blockNode, successorNode,
+                       /*label=*/"custom", kLineStyleRegionControlFlow);
+        }
+      }
+    }
   }
 
   /// Truncate long strings.
