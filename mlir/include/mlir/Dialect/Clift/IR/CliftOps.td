@@ -1,0 +1,126 @@
+include "CliftTypes.td"
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/BuiltinAttributes.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+
+class OneUseOfType<string op>
+    : ParamNativeOpTrait<"OneUseOfType", op>, StructuralOpTrait;
+
+class Clift_Op<string mnemonic, list<Trait> traits = []> :
+    Op<Clift_Dialect, mnemonic, traits>;
+
+def Clift_LoopOp : Clift_Op<"loop"> {
+  let regions = (region AnyRegion:$body);
+
+  let assemblyFormat = [{
+    $body attr-dict 
+  }];
+}
+
+def Clift_ContinueOp : Clift_Op<"continue", [HasParent<"LoopOp">, Terminator]> {}
+
+def LabelResource : Resource<"LabelResource">;
+
+def Clift_AssignLabelOp : Clift_Op<"assign_label"> {
+  let arguments = (ins Arg<Clift_LabelType, "", [MemFree]>:$label);
+
+  let assemblyFormat = [{
+    $label type($label) attr-dict 
+  }];
+
+}
+
+def Clift_GoToOp : Clift_Op<"goto", [Terminator]> {
+  let arguments = (ins Arg<Clift_LabelType, "", [MemRead]>:$label);
+
+  let assemblyFormat = [{
+    $label type($label) attr-dict 
+  }];
+}
+
+def Clift_MakeLabelOp : Clift_Op<"make_label", [OneUseOfType<"AssignLabelOp">] > {
+  let results = (outs Res<Clift_LabelType, "", [MemAlloc, MemWrite] >:$result);
+
+  let assemblyFormat = [{
+    type($result) attr-dict 
+  }];
+}
+
+def Clift_ConstantOp: Clift_Op<"constant", [Pure]> {
+  let arguments = (ins AnyAttrOf<[I64Attr, F64Attr, BoolAttr]>:$value);
+
+  let results = (outs Clift_PrimitiveType:$result);
+
+  let assemblyFormat = [{
+    $value type($result) attr-dict 
+  }];
+
+   let builders = [
+        OpBuilder<(ins "mlir::Type":$type, "double":$value), [{
+            build($_builder, $_state, type, $_builder.getF64FloatAttr(value));
+    }]>,OpBuilder<(ins "mlir::Type":$type, "bool":$value), [{
+            build($_builder, $_state, type, $_builder.getBoolAttr(value));
+    }]>,OpBuilder<(ins "mlir::Type":$type, "std::int64_t":$value), [{
+            build($_builder, $_state, type, $_builder.getI64IntegerAttr(value));
+    }]>
+    ];
+}
+
+class Clift_FunctionBase<string mnemonic> :
+Clift_Op<mnemonic, [Symbol, CallableOpInterface, AutomaticAllocationScope, IsolatedFromAbove]> {
+
+  let arguments = (ins StrAttr:$sym_name, TypeAttrOf<FunctionType>:$function_type);
+  let description = [{
+    expression.
+  }];
+
+  let regions = (region AnyRegion:$body);
+
+  let assemblyFormat = [{
+    $sym_name $function_type $body attr-dict 
+  }];
+
+    code extraBaseClassDeclaration = [{
+        Region *getCallableRegion() {
+            return isDeclaration() ? nullptr : &getBody();
+        }
+
+        mlir::Region::BlockListType& getBlocks() {
+            return getBody().getBlocks();
+        }   
+
+        ArrayRef<Type> getCallableResults() {
+            return getFunctionType().getResults();
+        }
+
+        ArrayRef<Type> getArgumentTypes() {
+            return getFunctionType().getInputs();
+        }
+
+        /// Returns the result types of this function.
+        ArrayRef<Type> getResultTypes() {
+            return getFunctionType().getResults();
+        }
+
+        bool isDeclaration() {
+            return getBody().empty();
+        }
+    
+        Block::args_iterator args_begin() {
+            return getBody().front().args_begin();
+        }
+
+        Block::args_iterator args_end() {
+            return getBody().front().args_end();
+        }
+
+    }];
+}
+
+
+def Clift_FunctionOp :
+Clift_FunctionBase<"function"> {
+    let extraClassDeclaration = extraBaseClassDeclaration;
+
+}
