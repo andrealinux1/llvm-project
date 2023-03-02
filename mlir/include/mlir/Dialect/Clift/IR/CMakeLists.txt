@@ -1,0 +1,20 @@
+add_mlir_dialect(CliftOps clift)
+add_mlir_doc(CliftOps CliftDialect Dialects/ -gen-dialect-doc -dialect clift)
+
+set(LLVM_TARGET_DEFINITIONS CliftTypes.td)
+mlir_tablegen(CliftTypes.h.inc -gen-typedef-decls -typedefs-dialect=llvm)
+mlir_tablegen(CliftTypes.cpp.inc -gen-typedef-defs -typedefs-dialect=llvm)
+add_public_tablegen_target(MLIRCliftTypesIncGen)
+add_dependencies(mlir-headers MLIRCliftTypesIncGen)
+
+set(LLVM_TARGET_DEFINITIONS CliftAttributes.td)
+mlir_tablegen(CliftAttributes.h.inc -gen-attrdef-decls)
+mlir_tablegen(CliftAttributes.cpp.inc -gen-attrdef-defs)
+add_public_tablegen_target(MLIRCliftAttributeIncGen)
+add_dependencies(mlir-headers MLIRCliftAttributeIncGen)
+
+set(LLVM_TARGET_DEFINITIONS CliftEnums.td)
+mlir_tablegen(CliftEnums.h.inc -gen-enum-decls)
+mlir_tablegen(CliftEnums.cpp.inc -gen-enum-defs)
+add_public_tablegen_target(MLIRCliftEnumsIncGen)
+add_dependencies(mlir-headers MLIRCliftEnumsIncGen)
