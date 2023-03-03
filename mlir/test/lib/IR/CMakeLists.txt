@@ -12,6 +12,7 @@ add_mlir_library(MLIRTestIR
   TestPrintDefUse.cpp
   TestPrintInvalid.cpp
   TestPrintNesting.cpp
+  TestPrintPass.cpp
   TestSideEffects.cpp
   TestSlicing.cpp
   TestSymbolUses.cpp
