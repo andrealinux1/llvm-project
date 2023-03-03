@@ -409,41 +409,9 @@ struct RestructureCFPass
       signalPassFailure();
   }
 
-  void printOperation(Operation *Op) {
-    // We print the operation we are currently visiting.
-    printIndent() << "visiting op: '" << Op->getName() << "'\n";
-    printIndent() << "It has '" << Op->getNumOperands() << "' operands and '"
-                  << Op->getNumResults() << " results'\n";
-
-    // We now move to dumping the nested regions.
-    printIndent() << "There are '" << Op->getNumRegions() << "' nested regions\n";
-    auto indent = pushIndent();
-    for (Region &nestedRegion : Op->getRegions()) {
-      //printRegion(NestedRegion);
-      //printIndent() << NestedRegion.getName() << "\n";
-      nestedRegion.viewGraph();
-    }
-  }
-
   Option<bool> performRestructure{*this, "restructure",
                                   llvm::cl::desc("Restructure CF dialect"),
                                   llvm::cl::init(false)};
-
-  /// Manages the indentation as we traverse the IR nesting.
-  int indent;
-  struct IdentRAII {
-    int &indent;
-    IdentRAII(int &indent) : indent(indent) {}
-    ~IdentRAII() { --indent; }
-  };
-  void resetIndent() { indent = 0; }
-  IdentRAII pushIndent() { return IdentRAII(++indent); }
-
-  llvm::raw_ostream &printIndent() {
-    for (int i = 0; i < indent; ++i)
-      llvm::outs() << "  ";
-    return llvm::outs();
-  }
 };
 } // namespace
 
