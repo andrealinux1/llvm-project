@@ -41,10 +41,11 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using BlockVect = llvm::SmallVector<mlir::Block *, 4>;
 
   using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
-  mlir::LogicalResult matchAndRewrite(LLVM::LLVMFuncOp op,
-                                      mlir::PatternRewriter &rewriter) const final {
-    //llvm::dbgs() << "Invoking matchAndRewrite on " << "\n";
-    //op->dump();
+  mlir::LogicalResult
+  matchAndRewrite(LLVM::LLVMFuncOp op,
+                  mlir::PatternRewriter &rewriter) const final {
+    // llvm::dbgs() << "Invoking matchAndRewrite on " << "\n";
+    // op->dump();
 
     // Ensure that we start from a `LLVMFuncOp` with a single `cf` region.
     assert(op->getNumRegions() == 1);
@@ -52,7 +53,6 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // Transform only regions which have an actual size.
     mlir::Region &reg = op->getRegion(0);
     if (not reg.getBlocks().empty()) {
-      //Reg.viewGraph();
       performRestructureCFRegion(reg, rewriter);
     }
     return success();
@@ -76,8 +76,8 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     for (EdgeDescriptor backedge : backedges) {
       printBackedge(backedge);
       llvm::dbgs() << "We can reach blocks:\n";
-      for (mlir::Block *reachable : nodesBetween(backedge.second,
-                                                 backedge.first)) {
+      for (mlir::Block *reachable :
+           nodesBetween(backedge.second, backedge.first)) {
         reachable->printAsOperand(llvm::dbgs());
         llvm::dbgs() << "\n";
       }
@@ -111,7 +111,9 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-    void printPairVector(llvm::SmallVectorImpl<std::pair<mlir::Block *, mlir::Block *>> &Vector) const {
+  void printPairVector(
+      llvm::SmallVectorImpl<std::pair<mlir::Block *, mlir::Block *>> &Vector)
+      const {
     for (auto const &[First, Second] : Vector) {
       First->printAsOperand(llvm::dbgs());
       llvm::dbgs() << " -> ";
@@ -120,14 +122,14 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  template<class NodeT>
+  template <class NodeT>
   size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) const {
     auto MapIt = Map.find(Element);
     assert(MapIt != Map.end());
     return MapIt->second;
   }
 
-  template<class NodeT>
+  template <class NodeT>
   NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
                    llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
                    llvm::SmallVectorImpl<NodeT> &RPOT) const {
@@ -168,27 +170,25 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return Entry;
   }
 
-  template<class NodeT>
+  template <class NodeT>
   bool setContains(llvm::SmallPtrSetImpl<NodeT> &Set, NodeT &Element) const {
     return Set.contains(Element);
   }
 
-  template<class GraphT,
-           class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-           typename NodeRef = typename GT::NodeRef>
+  template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+            typename NodeRef = typename GT::NodeRef>
   llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
   getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
-                     BlockSet &Region,
-                     NodeRef Entry) const {
+                     BlockSet &Region, NodeRef Entry) const {
     llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LateEntryPairs;
     for (const auto &[Other, NumIncoming] : EntryCandidates) {
       if (Other != Entry) {
         llvm::SmallVector<NodeRef, 4> OutsidePredecessor;
-        for (NodeRef Predecessor : llvm::make_range(GT::child_begin(Other),
-                                                    GT::child_end(Other))) {
+        for (NodeRef Predecessor :
+             llvm::make_range(GT::child_begin(Other), GT::child_end(Other))) {
           if (not setContains(Region, Predecessor)) {
             OutsidePredecessor.push_back(Predecessor);
-            LateEntryPairs.push_back( {Predecessor, Other} );
+            LateEntryPairs.push_back({Predecessor, Other});
           }
         }
         assert(OutsidePredecessor.size() == NumIncoming);
@@ -196,7 +196,6 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         // Print all the outside predecessor.
         llvm::dbgs() << "\nNon regular entry candidates found:\n";
         printVector(OutsidePredecessor);
-
       }
     }
 
@@ -217,57 +216,56 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   }
 
   // Returns true if during this iteration we outlined a loop construct.
-  bool outlineFirstIteration(llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>,
-                                               4> &LateEntryPairs,
-                             BlockSet &Region,
-                             BlockSet &OutlinedNodes,
-                             mlir::Block *Entry,
-                             mlir::PatternRewriter &rewriter) const {
-  bool OutlinedCycle = false;
+  bool outlineFirstIteration(
+      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+          &LateEntryPairs,
+      BlockSet &Region, BlockSet &OutlinedNodes, mlir::Block *Entry,
+      mlir::PatternRewriter &rewriter) const {
+    bool OutlinedCycle = false;
 
-  // For each abnormal entry found, clone the node target of the abnormal
-  // entry, and attach it to the previous predecessor.
-  IRMapping CloneMapping;
-  while (not LateEntryPairs.empty()) {
-    auto const &[Predecessor, LateEntry] = LateEntryPairs.back();
-    LateEntryPairs.pop_back();
+    // For each abnormal entry found, clone the node target of the abnormal
+    // entry, and attach it to the previous predecessor.
+    IRMapping CloneMapping;
+    while (not LateEntryPairs.empty()) {
+      auto const &[Predecessor, LateEntry] = LateEntryPairs.back();
+      LateEntryPairs.pop_back();
 
-    // I have to manually perform the cloning of the internal of the block
-    // body.
-    IRMapping Mapping;
-    mlir::Block *LateEntryClone = rewriter.createBlock(LateEntry);
-    Mapping.map(LateEntry, LateEntryClone);
-    CloneMapping.map(LateEntry, Predecessor);
+      // I have to manually perform the cloning of the internal of the block
+      // body.
+      IRMapping Mapping;
+      mlir::Block *LateEntryClone = rewriter.createBlock(LateEntry);
+      Mapping.map(LateEntry, LateEntryClone);
+      CloneMapping.map(LateEntry, Predecessor);
 
-    // Add the outlined nodes to the set that we will return.
-    OutlinedNodes.insert(LateEntryClone);
+      // Add the outlined nodes to the set that we will return.
+      OutlinedNodes.insert(LateEntryClone);
 
-    for (auto &BlockOp : *LateEntry) {
-      Operation *Clone = rewriter.clone(BlockOp, Mapping);
-      Mapping.map(BlockOp.getResults(), Clone->getResults());
-    }
+      for (auto &BlockOp : *LateEntry) {
+        Operation *Clone = rewriter.clone(BlockOp, Mapping);
+        Mapping.map(BlockOp.getResults(), Clone->getResults());
+      }
 
-    // Remap block successors that have been already clone on the respective
-    // clone (Otherwise we could end up in outlining loops).
-    OutlinedCycle |= updateTerminatorOperands(LateEntryClone, CloneMapping);
+      // Remap block successors that have been already clone on the respective
+      // clone (Otherwise we could end up in outlining loops).
+      OutlinedCycle |= updateTerminatorOperands(LateEntryClone, CloneMapping);
 
-    // In the predecessor point to the new cloned block.
-    updateTerminatorOperands(Predecessor, Mapping);
+      // In the predecessor point to the new cloned block.
+      updateTerminatorOperands(Predecessor, Mapping);
 
-    // Enqueue the successors. Note that if the successor is the elected
-    // entry, do not clone it, because it is correct to jump there. If the
-    // successor is outside of the current set region, do not clone it
-    // either, this path will be represented with `goto`s at the current
-    // stage.
-    for (mlir::Block *Successor : LateEntryClone->getSuccessors()) {
-      if (setContains(Region, Successor) && Successor != Entry) {
-        LateEntryPairs.push_back( {LateEntryClone, Successor });
+      // Enqueue the successors. Note that if the successor is the elected
+      // entry, do not clone it, because it is correct to jump there. If the
+      // successor is outside of the current set region, do not clone it
+      // either, this path will be represented with `goto`s at the current
+      // stage.
+      for (mlir::Block *Successor : LateEntryClone->getSuccessors()) {
+        if (setContains(Region, Successor) && Successor != Entry) {
+          LateEntryPairs.push_back({LateEntryClone, Successor});
+        }
       }
     }
-  }
 
-  return OutlinedCycle;
-}
+    return OutlinedCycle;
+  }
 
   void performRestructureCFRegion(mlir::Region &reg,
                                   mlir::PatternRewriter &rewriter) const {
@@ -275,7 +273,6 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     while (OutlinedCycle) {
       OutlinedCycle = false;
 
-      //reg.viewGraph();
       EdgeSet backedges = getBackedges(&reg.front());
       llvm::dbgs() << "\nInitial backedges:\n";
       printBackedges(backedges);
@@ -320,7 +317,8 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         Pt.insertRegion(Region);
       }
 
-      // Order the regions inside the `ParentTree`.
+      // Order the regions inside the `ParentTree`. This invokes region
+      // reordering
       Pt.order();
 
       // Order the regions so that they go from the outer one to the inner one.
@@ -331,12 +329,14 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
       llvm::copy(RPOTraversal(&reg), std::back_inserter(RPOT));
 
-      llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry = computeDistanceFromEntry(&reg);
+      llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
+          computeDistanceFromEntry(&reg);
 
       size_t RegionIndex = 0;
       for (BlockSet &region : Pt.regions()) {
         llvm::dbgs() << "\nRestructuring region idx: " << RegionIndex << ":\n";
-        llvm::DenseMap<mlir::Block *, size_t> EntryCandidates = getEntryCandidates<mlir::Block *>(region);
+        llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+            getEntryCandidates<mlir::Block *>(region);
 
         // In case we analyzing the root region, we expect to have no entry
         // candidates.
@@ -345,27 +345,28 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         assert(!RootRegionIteration || EntryCandidates.empty());
         if (RootRegionIteration) {
           assert(EntryCandidates.empty());
-          EntryCandidates.insert({ RPOT.front(), 0 });
+          EntryCandidates.insert({RPOT.front(), 0});
         }
 
         llvm::dbgs() << "\nEntry candidates:\n";
         printMap(EntryCandidates);
 
-        mlir::Block *Entry = electEntry<mlir::Block *>(EntryCandidates,
-                                                      ShortestPathFromEntry,
-                                                      RPOT);
+        mlir::Block *Entry = electEntry<mlir::Block *>(
+            EntryCandidates, ShortestPathFromEntry, RPOT);
         llvm::dbgs() << "\nElected entry:\n";
         Entry->printAsOperand(llvm::dbgs());
         llvm::dbgs() << "\n";
 
         // Now that elected the entry node we can prooced with the inlining.
         // Extract for each non-elected entry, the inlining path.
-        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4> LateEntryPairs
-          = getOutlinedEntries<mlir::Block *>(EntryCandidates, region, Entry);
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+            LateEntryPairs = getOutlinedEntries<mlir::Block *>(EntryCandidates,
+                                                               region, Entry);
 
         // Outline the first iteration of the cycles.
         BlockSet OutlinedNodes;
-        OutlinedCycle = outlineFirstIteration(LateEntryPairs, region, OutlinedNodes, Entry, rewriter);
+        OutlinedCycle = outlineFirstIteration(LateEntryPairs, region,
+                                              OutlinedNodes, Entry, rewriter);
 
         // Add the outlined nodes to the current region.
         region.insert(OutlinedNodes.begin(), OutlinedNodes.end());
@@ -398,14 +399,11 @@ struct RestructureCFPass
     patterns.add<RestructureCFRewriter>(&getContext());
 
     SmallVector<Operation *> Functions;
-    getOperation()->walk([&](LLVM::LLVMFuncOp F) {
-      Functions.push_back(F);
-    });
+    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
 
     auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
-    if (failed(applyOpPatternsAndFold(Functions,
-                                      std::move(patterns),
-                                      Strictness)))
+    if (failed(
+            applyOpPatternsAndFold(Functions, std::move(patterns), Strictness)))
       signalPassFailure();
   }
 
@@ -417,8 +415,6 @@ struct RestructureCFPass
 
 namespace mlir {
 namespace test {
-void registerRestructureCFPass() {
-  PassRegistration<RestructureCFPass>();
-}
+void registerRestructureCFPass() { PassRegistration<RestructureCFPass>(); }
 } // namespace test
 } // namespace mlir
