@@ -1,0 +1,535 @@
+#pragma once
+
+//
+// This file is distributed under the MIT License. See LICENSE.md for details.
+//
+
+#include <cstddef>
+#include <set>
+#include <vector>
+
+#include "llvm/ADT/BreadthFirstIterator.h"
+#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/GraphTraits.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/SCCIterator.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
+
+namespace revng::detail {
+
+  template<class NodeT>
+  using StatusMap = llvm::DenseMap<NodeT, bool>;
+
+  template<class NodeT>
+  using EdgeDescriptor = std::pair<NodeT, NodeT>;
+
+  template<class NodeT>
+  class DFState : public StatusMap<NodeT> {
+  protected:
+    using StatusMap = StatusMap<NodeT>;
+    using EdgeDescriptor = EdgeDescriptor<NodeT>;
+
+  public:
+    // Return the insertion iterator on the underlying map.
+    std::pair<typename StatusMap::iterator, bool>
+    insertInMap(NodeT Block, bool OnStack) {
+      return StatusMap::insert(std::make_pair(Block, OnStack));
+    }
+
+    // Return true if b is currently on the active stack of visit.
+    bool onStack(NodeT Block) {
+      auto Iter = this->find(Block);
+      return Iter != this->end() && Iter->second;
+    }
+
+  public:
+    // Invoked after we have processed all children of a node during the DFS.
+    void completed(NodeT Block) { (*this)[Block] = false; }
+  };
+
+  template<class NodeT>
+  class DFSBackedgeState : public DFState<NodeT> {
+    using typename DFState<NodeT>::StatusMap;
+    using typename DFState<NodeT>::EdgeDescriptor;
+
+  private:
+    NodeT CurrentNode = nullptr;
+    llvm::SmallSet<EdgeDescriptor, 4> Backedges;
+    std::function<bool(NodeT)> IsValid;
+
+  public:
+    DFSBackedgeState(std::function<bool(NodeT)> IsValid) : IsValid(IsValid) {}
+
+    void setCurrentNode(NodeT Node) { CurrentNode = Node; }
+    void insertBackedge(NodeT Source, NodeT Target) {
+      Backedges.insert(std::make_pair(Source, Target));
+    }
+    llvm::SmallSet<EdgeDescriptor, 4> getBackedges() { return Backedges; }
+    std::pair<typename StatusMap::iterator, bool> insert(NodeT Block) {
+
+      // If we are trying to insert an invalid block, add it as not on the stack
+      // so it does not influence the visit.
+      if (IsValid(Block)) {
+        return DFState<NodeT>::insertInMap(Block, true);
+      } else {
+        return DFState<NodeT>::insertInMap(Block, false);
+      }
+    }
+  };
+
+  template<class NodeT>
+  class DFSReachableState : public DFState<NodeT> {
+    using typename DFState<NodeT>::StatusMap;
+    using typename DFState<NodeT>::EdgeDescriptor;
+
+  private:
+    // Set which contains the desired targets nodes marked as reachable during
+    // the visit.
+    llvm::SmallPtrSet<NodeT, 4> Targets;
+    llvm::DenseMap<NodeT, llvm::SmallPtrSet<NodeT, 4>> AdditionalNodes;
+    NodeT Source = nullptr;
+    bool FirstInvocation = true;
+
+  public:
+    // Insert the initial target node at the beginning of the visit.
+    void insertTarget(NodeT Block) { Targets.insert(Block); }
+
+    // Assign the `Source` node.
+    void assignSource(NodeT Block) { Source = Block; }
+
+    llvm::SmallPtrSet<NodeT, 4> getReachables() { return Targets; }
+
+    llvm::SmallPtrSet<NodeT, 4> &getAdditional(NodeT Block) {
+      return AdditionalNodes[Block];
+    }
+
+    // Customize the `insert` method, in order to add the reachables nodes
+    // during the DFS.
+    std::pair<typename StatusMap::iterator, bool> insert(NodeT Block) {
+
+      // We need to insert the `Source` node, which is the first element on
+      // which the `insert` method is called, only once, and later on skip it,
+      // otherwise we may loop back from the `Source` and add additional nodes.
+      assert(Source != nullptr);
+      if (!FirstInvocation and Block == Source) {
+        return DFState<NodeT>::insertInMap(Block, false);
+      }
+      FirstInvocation = false;
+
+      // Check that, if we are trying to insert a block which is the `Targets`
+      // set, we add all the nodes on the current visiting stack in the
+      // `Targets` set.
+      if (Targets.contains(Block)) {
+        for (auto const &[K, V] : *this) {
+          if (V) {
+            Targets.insert(K);
+          }
+        }
+      }
+
+      // When we encounter a loop, we add to the additional set of nodes the
+      // nodes that are onStack, for later additional post-processing.
+      if (DFState<NodeT>::onStack(Block)) {
+        llvm::SmallPtrSet<NodeT, 4> &AdditionalSet = AdditionalNodes[Block];
+        for (auto const &[K, V] : *this) {
+          if (V) {
+            AdditionalSet.insert(K);
+          }
+        }
+      }
+
+      // Return the insertion iterator as usual.
+      return DFState<NodeT>::insertInMap(Block, true);
+    }
+  };
+
+} // namespace revng::detail
+
+template<class GraphT, class GT = llvm::GraphTraits<GraphT>>
+llvm::SmallSet<revng::detail::EdgeDescriptor<typename GT::NodeRef>, 4>
+getBackedges(GraphT Block, std::function<bool(typename GT::NodeRef)> IsValid) {
+  using NodeRef = typename GT::NodeRef;
+  using StateType = typename revng::detail::DFSBackedgeState<NodeRef>;
+  StateType State(IsValid);
+
+  // Declare manually a custom `df_iterator`
+  using bdf_iterator = llvm::df_iterator<GraphT, StateType, true, GT>;
+  auto Begin = bdf_iterator::begin(Block, State);
+  auto End = bdf_iterator::end(Block, State);
+
+  for (NodeRef Block : llvm::make_range(Begin, End)) {
+    for (NodeRef Succ :
+         llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
+      if (State.onStack(Succ)) {
+        State.insertBackedge(Block, Succ);
+      }
+    }
+  }
+
+  return State.getBackedges();
+}
+
+template<class GraphT, class GT = llvm::GraphTraits<GraphT>>
+llvm::SmallSet<revng::detail::EdgeDescriptor<typename GT::NodeRef>, 4>
+getBackedges(GraphT Block) {
+  std::function<bool(typename GT::NodeRef)> Lambda =
+    [](typename GT::NodeRef B) { return true; };
+  return getBackedges(Block, Lambda);
+}
+
+template<class GraphT, class GT = llvm::GraphTraits<GraphT>>
+llvm::SmallPtrSet<typename GT::NodeRef, 4>
+nodesBetweenImpl(GraphT Source,
+                 GraphT Target,
+                 const llvm::SmallPtrSetImpl<GraphT> *IgnoreList = nullptr) {
+  using NodeRef = typename GT::NodeRef;
+  using StateType = revng::detail::DFSReachableState<NodeRef>;
+  StateType State;
+
+  // If the `IgnoreList` is not empty, populate the ext set with the nodes that
+  // it contains.
+  if (IgnoreList != nullptr) {
+    for (GraphT Element : *IgnoreList) {
+      State.insertInMap(Element, false);
+    }
+  }
+
+  // Assign the `Source` node.
+  State.assignSource(Source);
+
+  // Initialize the visited set with the target node, which is the boundary
+  // that we don't want to trepass when finding reachable nodes.
+  State.insertTarget(Target);
+  State.insertInMap(Target, false);
+
+  using nbdf_iterator = llvm::df_iterator<GraphT, StateType, true, GT>;
+  auto Begin = nbdf_iterator::begin(Source, State);
+  auto End = nbdf_iterator::end(Source, State);
+
+  for (NodeRef Block : llvm::make_range(Begin, End)) {
+    (void) Block;
+  }
+
+  auto Targets = State.getReachables();
+  // Add in a fixed point fashion the additional nodes.
+  llvm::SmallPtrSet<NodeRef, 4> OldTargets;
+  do {
+    // At each iteration obtain a copy of the old set, so that we are able to
+    // exit from the loop as soon no change is made to the `Targets` set.
+
+    OldTargets = Targets;
+
+    // Temporary storage for the nodes to add at each iteration, to avoid
+    // invalidation on the `Targets` set.
+    llvm::SmallPtrSet<NodeRef, 4> NodesToAdd;
+
+    for (NodeRef Block : Targets) {
+      llvm::SmallPtrSet<NodeRef, 4> &AdditionalSet = State.getAdditional(Block);
+      NodesToAdd.insert(AdditionalSet.begin(), AdditionalSet.end());
+    }
+
+    // Add all the additional nodes found in this step.
+    Targets.insert(NodesToAdd.begin(), NodesToAdd.end());
+    NodesToAdd.clear();
+
+  } while (Targets != OldTargets);
+
+  return Targets;
+}
+
+template<class GraphT>
+inline llvm::SmallPtrSet<GraphT, 4>
+nodesBetween(GraphT Source,
+             GraphT Destination,
+             const llvm::SmallPtrSetImpl<GraphT> *IgnoreList = nullptr) {
+  return nodesBetweenImpl<GraphT, llvm::GraphTraits<GraphT>>(Source,
+                                                             Destination,
+                                                             IgnoreList);
+}
+
+template<class GraphT>
+inline llvm::SmallPtrSet<GraphT, 4>
+nodesBetweenReverse(GraphT Source,
+                    GraphT Destination,
+                    const llvm::SmallPtrSetImpl<GraphT> *IgnoreList = nullptr) {
+  using namespace llvm;
+  return nodesBetweenImpl<GraphT, GraphTraits<Inverse<GraphT>>>(Source,
+                                                                Destination,
+                                                                IgnoreList);
+}
+
+template<class NodeT>
+bool intersect(llvm::SmallPtrSet<NodeT, 4> &First,
+               llvm::SmallPtrSet<NodeT, 4> &Second) {
+
+  std::set<NodeT> FirstSet;
+  std::set<NodeT> SecondSet;
+  FirstSet.insert(First.begin(), First.end());
+  SecondSet.insert(Second.begin(), Second.end());
+
+  llvm::SmallVector<NodeT, 4> Intersection;
+  std::set_intersection(FirstSet.begin(),
+                        FirstSet.end(),
+                        SecondSet.begin(),
+                        SecondSet.end(),
+                        std::back_inserter(Intersection));
+  return !Intersection.empty();
+}
+
+template<class NodeT>
+bool subset(llvm::SmallPtrSet<NodeT, 4> &Contained,
+            llvm::SmallPtrSet<NodeT, 4> &Containing) {
+  std::set<NodeT> ContainedSet;
+  std::set<NodeT> ContainingSet;
+  ContainedSet.insert(Contained.begin(), Contained.end());
+  ContainingSet.insert(Containing.begin(), Containing.end());
+  return std::includes(ContainingSet.begin(),
+                       ContainingSet.end(),
+                       ContainedSet.begin(),
+                       ContainedSet.end());
+}
+
+template<class NodeT>
+bool equal(llvm::SmallPtrSet<NodeT, 4> &First,
+           llvm::SmallPtrSet<NodeT, 4> &Second) {
+  std::set<NodeT> FirstSet;
+  std::set<NodeT> SecondSet;
+  FirstSet.insert(First.begin(), First.end());
+  SecondSet.insert(Second.begin(), Second.end());
+  return FirstSet == SecondSet;
+}
+
+template<class NodeT>
+bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &R) {
+  for (auto RegionIt1 = R.begin(); RegionIt1 != R.end(); RegionIt1++) {
+    for (auto RegionIt2 = std::next(RegionIt1); RegionIt2 != R.end();
+         RegionIt2++) {
+      bool Intersects = intersect(*RegionIt1, *RegionIt2);
+      bool IsIncluded = subset(*RegionIt1, *RegionIt2);
+      bool IsIncludedReverse = subset(*RegionIt2, *RegionIt1);
+      bool AreEquivalent = equal(*RegionIt1, *RegionIt2);
+      if (Intersects
+          and (((!IsIncluded) and (!IsIncludedReverse)) or AreEquivalent)) {
+        (*RegionIt1).insert((*RegionIt2).begin(), (*RegionIt2).end());
+        R.erase(RegionIt2);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+template<class NodeT>
+void simplifyRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &Rs) {
+  bool Changes = true;
+  while (Changes) {
+    Changes = simplifyRegionsStep(Rs);
+  }
+}
+
+// Reorder the vector containing the regions so that they are in increasing size
+// order.
+template<class NodeT>
+void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &Rs) {
+  std::sort(Rs.begin(),
+            Rs.end(),
+            [](llvm::SmallPtrSet<NodeT, 4> &First,
+               llvm::SmallPtrSet<NodeT, 4> &Second) {
+              return First.size() < Second.size();
+            });
+}
+
+namespace revng::detail {
+using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
+
+// TODO: this data structure will be responsible of handling the child/parent
+//       relationship of identified regions. We now implemented this with
+//       keeping indexes on the underlying vector around, but in future we may
+//       want to move the ownership inside and expose `GraphTraits`.
+template<class NodeT>
+class ParentTree {
+  using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
+  using RegionSet = llvm::SmallPtrSet<NodeT, 4>;
+
+  using links_container = llvm::SmallVector<RegionSet, 4>;
+  using links_iterator = typename links_container::iterator;
+  using links_const_iterator = typename links_container::const_iterator;
+  using links_range = llvm::iterator_range<links_iterator>;
+  using links_const_range = llvm::iterator_range<links_const_iterator>;
+
+private:
+  ParentMap Map;
+  links_container Rs;
+  bool ReadyState;
+
+private:
+  RegionSet &getRegionFromIndex(std::ptrdiff_t Index) {
+    return Rs[Index];
+  }
+
+  void computeParents() {
+    for (auto RegionIt1 = Rs.begin(); RegionIt1 != Rs.end(); RegionIt1++) {
+      for (auto RegionIt2 = std::next(RegionIt1); RegionIt2 != Rs.end();
+         RegionIt2++) {
+        if (subset(*RegionIt1, *RegionIt2)) {
+          Map[getRegionIndex(*RegionIt1)] = getRegionIndex(*RegionIt2);
+          break;
+        }
+      }
+    }
+  }
+
+public:
+  ParentTree() = default;
+
+  links_container &getRegions() { return Rs; }
+
+  std::ptrdiff_t getRegionIndex(RegionSet &Region) {
+    for (auto RegionIt = Rs.begin();
+         RegionIt != Rs.end();
+         RegionIt++) {
+      if (*RegionIt == Region) {
+        return std::distance(Rs.begin(), RegionIt);
+      }
+    }
+
+    // TODO: We may want to soft fail in this situation, if we allow to query
+    //       the data structure with no assurance that the intended region is
+    //       present.
+    assert(false);
+  }
+
+  // TODO: we need this method because we cannot have `std::optional` to
+  //       references.
+  bool hasParent(RegionSet &Child) {
+    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
+    auto MapIt = Map.find(ChildIndex);
+    return MapIt != Map.end();
+  }
+
+  RegionSet & getParent(RegionSet &Child) {
+    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
+    auto MapIt = Map.find(ChildIndex);
+    assert(MapIt != Map.end());
+    std::ptrdiff_t ParentIndex = MapIt->second;
+    RegionSet &Parent = getRegionFromIndex(ParentIndex);
+    return Parent;
+  }
+
+  void insertRegion(RegionSet &Region) {
+    Rs.emplace_back(std::move(Region));
+  }
+
+  void order() {
+    computeParents();
+    computePartialOrder();
+    computeParents();
+  }
+
+  links_iterator begin() {
+    return Rs.begin();
+  }
+  links_const_iterator begin() const {
+    return Rs.begin();
+  }
+  links_iterator end() {
+    return Rs.end();
+  }
+  links_const_iterator end() const {
+    return Rs.end();
+  }
+  links_range regions() { return llvm::make_range(begin(), end()); }
+  links_const_range regions() const { return llvm::make_range(begin(), end()); }
+
+  void computePartialOrder() {
+    links_container OrderedRegions;
+    llvm::SmallPtrSet<size_t, 4> Processed;
+
+    while (Rs.size() != Processed.size()) {
+      for (auto RegionIt1 = begin(); RegionIt1 != end(); RegionIt1++) {
+        if (Processed.count(getRegionIndex(*RegionIt1)) == 0) {
+          bool FoundParent = false;
+          for (auto RegionIt2 = std::next(RegionIt1); RegionIt2 != Rs.end(); RegionIt2++) {
+            if (Processed.count(getRegionIndex(*RegionIt2)) == 0) {
+              if (getParent(*RegionIt1) == *RegionIt2) {
+                FoundParent = true;
+                break;
+              }
+            }
+          }
+
+          if (FoundParent == false) {
+            OrderedRegions.push_back(*RegionIt1);
+            Processed.insert(getRegionIndex(*RegionIt1));
+            break;
+          }
+        }
+      }
+    }
+
+    // Swap the region vector with the ordered one.
+    std::reverse(OrderedRegions.begin(), OrderedRegions.end());
+    Rs.swap(OrderedRegions);
+  }
+
+};
+
+} // namespace revng::detail
+
+template<class GraphT,
+         class GT = llvm::GraphTraits<GraphT>,
+         typename NodeRef = typename GT::NodeRef>
+llvm::DenseMap<NodeRef, size_t>
+computeDistanceFromEntry(GraphT Source) {
+  llvm::DenseMap<NodeRef, size_t> ShortestPathFromEntry;
+
+  using SetType = llvm::bf_iterator_default_set<NodeRef>;
+  using bf_iterator = llvm::bf_iterator<GraphT, SetType, GT>;
+  auto BFSIt = bf_iterator::begin(Source);
+  auto BFSEnd = bf_iterator::end(Source);
+
+  for (; BFSIt != BFSEnd; ++BFSIt) {
+    NodeRef Block = *BFSIt;
+    size_t Depth = BFSIt.getLevel();
+
+    // Obtain the insertion iterator for the `Depth` block element.
+    auto ShortestIt = ShortestPathFromEntry.insert( {Block, Depth} );
+
+    // If we already had in the map an entry for the current block, we need to
+    // assert that the previously found value for the `Depth` is less or equal
+    // of the `Depth` we are inserting.
+    if (ShortestIt.second == false) {
+      assert(ShortestIt.first->second <= Depth);
+    }
+  }
+
+  return ShortestPathFromEntry;
+}
+
+template<class GraphT,
+         class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+         typename NodeRef = typename GT::NodeRef>
+llvm::DenseMap<NodeRef, size_t>
+getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
+
+  // `DenseMap` that will contain all the candidate entries of a region, with
+  // the associated incoming edges degree.
+  llvm::DenseMap<NodeRef, size_t> Result;
+
+  // We can iterate over all the predecessors of a block, if we find a pred not
+  // in the current set, we increment the counter of the entri edges.
+  for (NodeRef Block : Region) {
+    GT::child_begin(Block);
+    for (NodeRef Predecessor : llvm::make_range(GT::child_begin(Block),
+                                                GT::child_end(Block))) {
+      if (not Region.contains(Predecessor)) {
+        Result[Block]++;
+      }
+    }
+  }
+
+  return Result;
+}
