@@ -60,7 +60,7 @@ inline void registerAllPasses() {
   registerAsyncPasses();
   arith::registerArithPasses();
   bufferization::registerBufferizationPasses();
-  registercliftPasses();
+  registerCliftPasses();
   func::registerFuncPasses();
   registerGPUPasses();
   registerGpuSerializeToCubinPass();

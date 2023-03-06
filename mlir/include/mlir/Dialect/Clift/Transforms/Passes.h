@@ -20,8 +20,7 @@ namespace mlir {
 #define GEN_PASS_DECL
 #include "mlir/Dialect/Clift/Transforms/Passes.h.inc"
 
-/// Creates a pass that specializes for loop for unrolling and
-/// vectorization.
+/// Creates a pass that applies the restructuring to Clift.
 std::unique_ptr<Pass> createRestructureCliftPass();
 
 //===----------------------------------------------------------------------===//

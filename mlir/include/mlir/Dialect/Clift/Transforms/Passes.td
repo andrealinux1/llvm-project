@@ -15,6 +15,11 @@ def RestructureClift
     : Pass<"restructure-clift"> {
   let summary = "Restructure in CLift module";
   let constructor = "mlir::createRestructureCliftPass()";
+  let options = [
+    Option<"restructure", "perform-restructure", "bool",
+           /*default=*/"true",
+           "Perform the restructure operation.">
+  ];
   let dependentDialects = [];
 }
 

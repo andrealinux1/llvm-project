@@ -1,5 +1,5 @@
 set(LLVM_TARGET_DEFINITIONS Passes.td)
-mlir_tablegen(Passes.h.inc -gen-pass-decls -name clift)
+mlir_tablegen(Passes.h.inc -gen-pass-decls -name Clift)
 add_public_tablegen_target(MLIRCliftPassIncGen)
 add_dependencies(mlir-headers MLIRCliftPassIncGen)
 
