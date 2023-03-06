@@ -26,6 +26,7 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/TransformOps/BufferizationTransformOps.h"
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Clift/IR/Clift.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
@@ -86,6 +87,7 @@ inline void registerAllDialects(DialectRegistry &registry) {
                   async::AsyncDialect,
                   bufferization::BufferizationDialect,
                   cf::ControlFlowDialect,
+                  clift::CliftDialect,
                   complex::ComplexDialect,
                   DLTIDialect,
                   emitc::EmitCDialect,

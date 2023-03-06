@@ -1,7 +1,7 @@
 #ifndef MLIR_CLIFT
 #define MLIR_CLIFT
 // Include the definition of the necessary tablegen constructs for defining
-// our dialect. 
+// our dialect.
 include "mlir/IR/DialectBase.td"
 
 // Here is a simple definition of a dialect.

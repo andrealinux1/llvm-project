@@ -19,7 +19,7 @@ def RestructureClift : Pass<"restructure-clift"> {
            /*default=*/"true",
            "Perform the restructure operation.">
   ];
-  let dependentDialects = [];
+  let dependentDialects = ["clift::CliftDialect"];
 }
 
 #endif // MLIR_DIALECT_CLIFT_PASSES

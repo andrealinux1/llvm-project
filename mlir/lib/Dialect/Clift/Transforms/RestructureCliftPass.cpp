@@ -13,6 +13,10 @@
 #include "mlir/Dialect/Clift/Transforms/Passes.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Clift/IR/Clift.h"
+#include "mlir/Dialect/Clift/IR/CliftAttributes.h"
+#include "mlir/Dialect/Clift/IR/CliftOps.h"
+#include "mlir/Dialect/Clift/IR/CliftTypes.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -391,6 +395,30 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         // Re-add all the nodes of the current region to the parent region.
         if (Pt.hasParent(region)) {
           Pt.getParent(region).insert(region.begin(), region.end());
+        }
+
+        // TODO: We do a early break here because we want to continue with the
+        // analysis and restructuring, but we should isolate this portion of the
+        // code and remove the early exit.
+        if (OutlinedCycle) {
+          break;
+        }
+
+        // Create a new `clift.loop` operation.
+        auto loc = UnknownLoc::get(getContext());
+        clift::LoopOp CliftLoop = rewriter.create<clift::LoopOp>(loc);
+
+        // We create a clone of the blocks in the new `CliftLoop` region.
+        assert(CliftLoop->getNumRegions() == 0);
+        mlir::Region &LoopRegion = CliftLoop->getRegion(0);
+
+        // Create a new empty block in the that we will use only as a
+        // placeholder for inserting other blocks, then we will remove it.
+        mlir::Block *PlaceholderBlock = rewriter.createBlock(&LoopRegion);
+
+        // Try using the `moveBefore` for blocks.
+        for (mlir::Block *B : region) {
+          B->moveBefore(PlaceholderBlock);
         }
 
         // Increment region index for next iteration.
