@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Async/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
+#include "mlir/Dialect/Clift/Transforms/Passes.h"
 #include "mlir/Dialect/Func/Transforms/Passes.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/LLVMIR/Transforms/Passes.h"
@@ -59,6 +60,7 @@ inline void registerAllPasses() {
   registerAsyncPasses();
   arith::registerArithPasses();
   bufferization::registerBufferizationPasses();
+  registercliftPasses();
   func::registerFuncPasses();
   registerGPUPasses();
   registerGpuSerializeToCubinPass();

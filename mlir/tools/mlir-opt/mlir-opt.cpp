@@ -63,7 +63,7 @@ void registerConvertCallOpPass();
 void registerInliner();
 void registerMemRefBoundCheck();
 void registerPatternsTestPass();
-void registerRestructureCFPass();
+//void registerRestructureCFPass();
 void registerSimpleParametricTilingPass();
 void registerTestAffineLoopParametricTilingPass();
 void registerTestArithEmulateWideIntPass();
@@ -172,7 +172,7 @@ void registerTestPasses() {
   mlir::test::registerMemRefBoundCheck();
   mlir::test::registerPatternsTestPass();
   mlir::test::registerSimpleParametricTilingPass();
-  mlir::test::registerRestructureCFPass();
+  //mlir::test::registerRestructureCFPass();
   mlir::test::registerTestAffineLoopParametricTilingPass();
   mlir::test::registerTestAliasAnalysisPass();
   mlir::test::registerTestArithEmulateWideIntPass();

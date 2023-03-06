@@ -1,3 +1,5 @@
+#include "mlir/Dialect/Clift/Transforms/Passes.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -26,7 +28,10 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/Support/Debug.h"
 
-// Provide graph
+namespace mlir {
+#define GEN_PASS_DEF_RESTRUCTURECLIFT
+#include "mlir/Dialect/Clift/Transforms/Passes.h.inc"
+} // namespace mlir
 
 using namespace mlir;
 
@@ -383,6 +388,8 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   }
 };
 
+/*
+
 struct RestructureCFPass
     : public PassWrapper<RestructureCFPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RestructureCFPass)
@@ -411,10 +418,35 @@ struct RestructureCFPass
                                   llvm::cl::desc("Restructure CF dialect"),
                                   llvm::cl::init(false)};
 };
+
+*/
 } // namespace
 
+/*
 namespace mlir {
 namespace test {
 void registerRestructureCFPass() { PassRegistration<RestructureCFPass>(); }
 } // namespace test
 } // namespace mlir
+*/
+
+namespace {
+struct RestructureClift : public impl::RestructureCliftBase<RestructureClift> {
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<RestructureCFRewriter>(&getContext());
+
+    SmallVector<Operation *> Functions;
+    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
+
+    auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
+    if (failed(
+            applyOpPatternsAndFold(Functions, std::move(patterns), Strictness)))
+      signalPassFailure();
+  }
+};
+} // namespace
+
+std::unique_ptr<Pass> mlir::createRestructureCliftPass() {
+  return std::make_unique<RestructureClift>();
+}
