@@ -388,49 +388,6 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   }
 };
 
-/*
-
-struct RestructureCFPass
-    : public PassWrapper<RestructureCFPass, OperationPass<>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RestructureCFPass)
-
-  StringRef getArgument() const final { return "restructure-cf"; }
-  StringRef getDescription() const final {
-    return "Perform restructuring on `cf` dialect";
-  }
-  RestructureCFPass() = default;
-  RestructureCFPass(const RestructureCFPass &) {}
-
-  void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<RestructureCFRewriter>(&getContext());
-
-    SmallVector<Operation *> Functions;
-    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
-
-    auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
-    if (failed(
-            applyOpPatternsAndFold(Functions, std::move(patterns), Strictness)))
-      signalPassFailure();
-  }
-
-  Option<bool> performRestructure{*this, "restructure",
-                                  llvm::cl::desc("Restructure CF dialect"),
-                                  llvm::cl::init(false)};
-};
-
-*/
-} // namespace
-
-/*
-namespace mlir {
-namespace test {
-void registerRestructureCFPass() { PassRegistration<RestructureCFPass>(); }
-} // namespace test
-} // namespace mlir
-*/
-
-namespace {
 struct RestructureClift : public impl::RestructureCliftBase<RestructureClift> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());

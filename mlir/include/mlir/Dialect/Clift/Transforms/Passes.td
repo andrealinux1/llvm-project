@@ -11,8 +11,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def RestructureClift
-    : Pass<"restructure-clift"> {
+def RestructureClift : Pass<"restructure-clift"> {
   let summary = "Restructure in CLift module";
   let constructor = "mlir::createRestructureCliftPass()";
   let options = [
