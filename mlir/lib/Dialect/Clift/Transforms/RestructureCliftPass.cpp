@@ -49,7 +49,7 @@ using namespace mlir;
 
 namespace {
 
-class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
+class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
   using BlockSet = llvm::SmallPtrSet<mlir::Block *, 4>;
@@ -70,7 +70,7 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // Transform only regions which have an actual size.
     mlir::Region &reg = op->getRegion(0);
     if (not reg.getBlocks().empty()) {
-      performRestructureCFRegion(reg, rewriter);
+      performRestructureCliftRegion(reg, rewriter);
     }
     return success();
   }
@@ -284,8 +284,8 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return OutlinedCycle;
   }
 
-  void performRestructureCFRegion(mlir::Region &reg,
-                                  mlir::PatternRewriter &rewriter) const {
+  void performRestructureCliftRegion(mlir::Region &reg,
+                                     mlir::PatternRewriter &rewriter) const {
     bool OutlinedCycle = true;
     while (OutlinedCycle) {
       OutlinedCycle = false;
@@ -403,7 +403,7 @@ class RestructureCFRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 struct RestructureClift : public impl::RestructureCliftBase<RestructureClift> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<RestructureCFRewriter>(&getContext());
+    patterns.add<RestructureCliftRewriter>(&getContext());
 
     SmallVector<Operation *> Functions;
     getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
