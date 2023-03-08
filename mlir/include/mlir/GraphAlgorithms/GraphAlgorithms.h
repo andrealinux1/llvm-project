@@ -492,7 +492,7 @@ getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   llvm::DenseMap<NodeRef, size_t> Result;
 
   // We can iterate over all the predecessors of a block, if we find a pred not
-  // in the current set, we increment the counter of the entri edges.
+  // in the current set, we increment the counter of the entry edges.
   for (NodeRef Block : Region) {
     GT::child_begin(Block);
     for (NodeRef Predecessor :
@@ -504,4 +504,26 @@ getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   }
 
   return Result;
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
+
+  // Vector that contains the pairs of exit/successor node pairs.
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ExitSuccessorPairs;
+
+  // We iterate over all the successors of a block, if we find a successor not
+  // in the current set, we add the pairs of node to the set.
+  for (NodeRef Block : Region) {
+    for (NodeRef Successor :
+         llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
+      if (not Region.contains(Successor)) {
+        ExitSuccessorPairs.push_back({Block, Successor});
+      }
+    }
+  }
+
+  return ExitSuccessorPairs;
 }

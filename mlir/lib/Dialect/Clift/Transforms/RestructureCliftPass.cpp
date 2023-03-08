@@ -288,6 +288,19 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return OutlinedCycle;
   }
 
+  template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+            typename NodeRef = typename GT::NodeRef>
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+  getPredecessorNodePairs(NodeRef Node) const {
+    llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> PredecessorNodePairs;
+    for (NodeRef Predecessor :
+         llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+      PredecessorNodePairs.push_back({Predecessor, Node});
+    }
+
+    return PredecessorNodePairs;
+  }
+
   void performRestructureCliftRegion(mlir::Region &reg,
                                      mlir::PatternRewriter &rewriter) const {
     bool OutlinedCycle = true;
@@ -359,7 +372,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
             getEntryCandidates<mlir::Block *>(region);
 
-        // In case we analyzing the root region, we expect to have no entry
+        // In case we are analyzing the root region, we expect to have no entry
         // candidates.
         bool RootRegionIteration = (RegionIndex + 1) == regions.size();
         assert(!EntryCandidates.empty() || RootRegionIteration);
@@ -404,21 +417,94 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           break;
         }
 
+        if (RootRegionIteration == true) {
+          break;
+        }
+
+        // Obtain the parent region of the function we are restructuring.
+        mlir::Region *ParentRegion = nullptr;
+        for (mlir::Block *B : region) {
+          if (ParentRegion == nullptr) {
+            ParentRegion = B->getParent();
+          }
+          assert(B->getParent() == ParentRegion);
+        }
+
+        // Create a new block to contain the `clift.loop` operation.
+        mlir::Block *LoopParentBlock = rewriter.createBlock(ParentRegion);
+
+        // Connect the block containing the `clift.loop` to the old
+        // predecessors.
+        IRMapping EntryMapping;
+        EntryMapping.map(Entry, LoopParentBlock);
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+            PredecessorNodePairs =
+                getPredecessorNodePairs<mlir::Block *>(Entry);
+        for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
+          assert(EntryCandidate == Entry);
+          updateTerminatorOperands(Predecessor, EntryMapping);
+        }
+
         // Create a new `clift.loop` operation.
+        rewriter.setInsertionPointToStart(LoopParentBlock);
         auto loc = UnknownLoc::get(getContext());
         clift::LoopOp CliftLoop = rewriter.create<clift::LoopOp>(loc);
 
         // We create a clone of the blocks in the new `CliftLoop` region.
-        assert(CliftLoop->getNumRegions() == 0);
+        assert(CliftLoop->getNumRegions() == 1);
         mlir::Region &LoopRegion = CliftLoop->getRegion(0);
 
         // Create a new empty block in the that we will use only as a
         // placeholder for inserting other blocks, then we will remove it.
-        mlir::Block *PlaceholderBlock = rewriter.createBlock(&LoopRegion);
+        mlir::Block *EmptyBlock = rewriter.createBlock(&LoopRegion);
+        mlir::Block *PlaceholderBlock = EmptyBlock;
 
         // Try using the `moveBefore` for blocks.
+        // Explicitly handle the entry block, which must come first in the
+        // region, and reverse insert all the other blocks since we are adding
+        // before.
         for (mlir::Block *B : region) {
-          B->moveBefore(PlaceholderBlock);
+          if (B != Entry) {
+            B->moveBefore(PlaceholderBlock);
+            PlaceholderBlock = B;
+          }
+        }
+        Entry->moveBefore(PlaceholderBlock);
+
+        EmptyBlock->moveBefore(Entry);
+        rewriter.setInsertionPointToEnd(EmptyBlock);
+        rewriter.create<LLVM::BrOp>(loc, Entry);
+
+        // Remove the `PlaceholderBlock`
+        // rewriter.eraseBlock(EmptyBlock);
+
+        // Handle the outgoing edges from the region.
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+            ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(region);
+
+        for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
+
+          // Create the label in the successor `Block`.
+          rewriter.setInsertionPointToStart(Successor);
+          auto loc = UnknownLoc::get(getContext());
+          clift::MakeLabelOp MakeLabel =
+              rewriter.create<clift::MakeLabelOp>(loc);
+          clift::AssignLabelOp Label =
+              rewriter.create<clift::AssignLabelOp>(loc, MakeLabel);
+
+          // We need create a new basic block which will contain the `goto`
+          // statement, and then subsistute the branch to that block.
+          mlir::Block *GotoBlock = rewriter.createBlock(&LoopRegion);
+
+          // Create the `goto` in the new trampoline block.
+          rewriter.setInsertionPointToStart(GotoBlock);
+          rewriter.create<clift::GoToOp>(loc, MakeLabel);
+
+          // Subsitute the outgoing edges with a branch to the `goto`s
+          // containing blocks.
+          IRMapping GotoMapping;
+          GotoMapping.map(Successor, GotoBlock);
+          updateTerminatorOperands(Exit, GotoMapping);
         }
 
         // Increment region index for next iteration.
