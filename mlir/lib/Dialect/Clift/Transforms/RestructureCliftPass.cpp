@@ -301,6 +301,22 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return PredecessorNodePairs;
   }
 
+  template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+            typename NodeRef = typename GT::NodeRef>
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+  getLoopPredecessorNodePairs(NodeRef Node,
+                              llvm::SmallPtrSetImpl<NodeRef> &Region) const {
+    llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LoopPredecessorNodePairs;
+    for (NodeRef Predecessor :
+         llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+      if (not Region.contains(Predecessor)) {
+        LoopPredecessorNodePairs.push_back({Predecessor, Node});
+      }
+    }
+
+    return LoopPredecessorNodePairs;
+  }
+
   void performRestructureCliftRegion(mlir::Region &reg,
                                      mlir::PatternRewriter &rewriter) const {
     bool OutlinedCycle = true;
@@ -439,7 +455,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         EntryMapping.map(Entry, LoopParentBlock);
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
             PredecessorNodePairs =
-                getPredecessorNodePairs<mlir::Block *>(Entry);
+                getLoopPredecessorNodePairs<mlir::Block *>(Entry, region);
         for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
           assert(EntryCandidate == Entry);
           updateTerminatorOperands(Predecessor, EntryMapping);
@@ -505,6 +521,20 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           IRMapping GotoMapping;
           GotoMapping.map(Successor, GotoBlock);
           updateTerminatorOperands(Exit, GotoMapping);
+        }
+
+        // Update in the parent region the status of the nodes.
+        if (Pt.hasParent(region)) {
+
+          // Insert in the parent region the block containing the `clift.loop`.
+          BlockSet &ParentRegion = Pt.getParent(region);
+          ParentRegion.insert(LoopParentBlock);
+
+          // Remove from the parent region all the blocks that now constitute
+          // the body of the `clift.loop`.
+          for (mlir::Block *B : region) {
+            ParentRegion.erase(B);
+          }
         }
 
         // Increment region index for next iteration.
