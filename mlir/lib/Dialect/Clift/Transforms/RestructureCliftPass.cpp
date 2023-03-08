@@ -502,11 +502,17 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
 
-          // Create the label in the successor `Block`.
-          rewriter.setInsertionPointToStart(Successor);
+          // Create the label in the first first basic block of the root region
+          // of the function.
+          rewriter.setInsertionPoint(&reg.front(), reg.front().begin());
           auto loc = UnknownLoc::get(getContext());
+          rewriter.setInsertionPoint(&*(reg.op_begin()));
+
           clift::MakeLabelOp MakeLabel =
               rewriter.create<clift::MakeLabelOp>(loc);
+
+          // Create the label in the successor `Block`.
+          rewriter.setInsertionPointToStart(Successor);
           clift::AssignLabelOp Label =
               rewriter.create<clift::AssignLabelOp>(loc, MakeLabel);
 
