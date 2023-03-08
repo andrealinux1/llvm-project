@@ -465,6 +465,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         rewriter.setInsertionPointToStart(LoopParentBlock);
         auto loc = UnknownLoc::get(getContext());
         clift::LoopOp CliftLoop = rewriter.create<clift::LoopOp>(loc);
+        LLVM::UnreachableOp Unreachable =
+            rewriter.create<LLVM::UnreachableOp>(loc);
 
         // We create a clone of the blocks in the new `CliftLoop` region.
         assert(CliftLoop->getNumRegions() == 1);
