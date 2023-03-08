@@ -24,9 +24,9 @@ def Clift_Dialect : Dialect {
     void registerTypes();
     void registerOperations();
 
-    mlir::Type parseType(mlir::DialectAsmParser &parser) const;
+    mlir::Type parseType(mlir::DialectAsmParser &parser) const override;
     void printType(
-        mlir::Type type, mlir::DialectAsmPrinter &printer) const;
+        mlir::Type type, mlir::DialectAsmPrinter &printer) const override;
   }];
 }
 #endif
