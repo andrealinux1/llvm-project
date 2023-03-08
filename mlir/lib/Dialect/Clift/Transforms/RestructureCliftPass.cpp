@@ -493,9 +493,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         rewriter.setInsertionPointToEnd(EmptyBlock);
         rewriter.create<LLVM::BrOp>(loc, Entry);
 
-        // Remove the `PlaceholderBlock`
-        // rewriter.eraseBlock(EmptyBlock);
-
         // Handle the outgoing edges from the region.
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
             ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(region);
