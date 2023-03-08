@@ -494,7 +494,6 @@ getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   // We can iterate over all the predecessors of a block, if we find a pred not
   // in the current set, we increment the counter of the entry edges.
   for (NodeRef Block : Region) {
-    GT::child_begin(Block);
     for (NodeRef Predecessor :
          llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
       if (not Region.contains(Predecessor)) {
