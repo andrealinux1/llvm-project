@@ -309,7 +309,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LoopPredecessorNodePairs;
     for (NodeRef Predecessor :
          llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
-      if (not Region.contains(Predecessor)) {
+      if (not setContains(Region, Predecessor)) {
         LoopPredecessorNodePairs.push_back({Predecessor, Node});
       }
     }
@@ -325,7 +325,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> ContinueNodePairs;
     for (NodeRef Predecessor :
          llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
-      if (Region.contains(Predecessor)) {
+      if (not setContains(Region, Predecessor)) {
         ContinueNodePairs.push_back({Predecessor, Entry});
       }
     }
