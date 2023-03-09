@@ -313,11 +313,17 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         OutlinedCycle = outlineFirstIteration(LateEntryPairs, region,
                                               OutlinedNodes, Entry, rewriter);
 
-        // Add the outlined nodes to the current region.
-        region.insert(OutlinedNodes.begin(), OutlinedNodes.end());
-
         // Re-add all the nodes of the current region to the parent region.
         if (Pt.hasParent(region)) {
+
+          // Add to the parent region the outlined nodes from the current
+          // region, which morally belong to the containing one.
+          Pt.getParent(region).insert(OutlinedNodes.begin(),
+                                      OutlinedNodes.end());
+
+          // Update the parent region with the currently analyzed region. This
+          // step is actually needed to propagate the outlined nodes in the
+          // parent of our parent, if present, otherwise it has no effects.
           Pt.getParent(region).insert(region.begin(), region.end());
         }
 
