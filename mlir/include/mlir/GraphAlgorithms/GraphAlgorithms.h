@@ -352,7 +352,12 @@ class ParentTree {
 private:
   ParentMap Map;
   links_container Rs;
-  bool ReadyState;
+  llvm::DenseMap<std::ptrdiff_t, bool> IsRootRegionMap;
+  llvm::DenseMap<std::ptrdiff_t, NodeT> EntryMap;
+
+  // TODO: this field is not used, implement the check that any query to the
+  // data structure find it in a ready state.
+  bool ReadyState = false;
 
 private:
   RegionSet &getRegionFromIndex(std::ptrdiff_t Index) { return Rs[Index]; }
@@ -372,6 +377,14 @@ private:
 public:
   ParentTree() = default;
 
+  void clear() {
+    Map.clear();
+    Rs.clear();
+    IsRootRegionMap.clear();
+    EntryMap.clear();
+    ReadyState = false;
+  }
+
   links_container &getRegions() { return Rs; }
 
   std::ptrdiff_t getRegionIndex(RegionSet &Region) {
@@ -387,7 +400,7 @@ public:
     assert(false);
   }
 
-  // TODO: we need this method because we cannot have `std::optional` to
+  // TODO: we need this method because we cannot have `std::optional` with
   //       references.
   bool hasParent(RegionSet &Child) {
     std::ptrdiff_t ChildIndex = getRegionIndex(Child);
@@ -449,6 +462,30 @@ public:
     // Swap the region vector with the ordered one.
     std::reverse(OrderedRegions.begin(), OrderedRegions.end());
     Rs.swap(OrderedRegions);
+  }
+
+  void setRegionRoot(RegionSet &Region, bool Value) {
+    std::ptrdiff_t RegionIndex = getRegionIndex(Region);
+    IsRootRegionMap[RegionIndex] = Value;
+  }
+
+  bool isRegionRoot(RegionSet &Region) {
+    std::ptrdiff_t RegionIndex = getRegionIndex(Region);
+    auto MapIt = IsRootRegionMap.find(RegionIndex);
+    assert(MapIt != IsRootRegionMap.end());
+    return MapIt->second;
+  }
+
+  void setRegionEntry(RegionSet &Region, NodeT Entry) {
+    std::ptrdiff_t RegionIndex = getRegionIndex(Region);
+    EntryMap[RegionIndex] = Entry;
+  }
+
+  NodeT getRegionEntry(RegionSet &Region) {
+    std::ptrdiff_t RegionIndex = getRegionIndex(Region);
+    auto MapIt = EntryMap.find(RegionIndex);
+    assert(MapIt != EntryMap.end());
+    return MapIt->second;
   }
 };
 
