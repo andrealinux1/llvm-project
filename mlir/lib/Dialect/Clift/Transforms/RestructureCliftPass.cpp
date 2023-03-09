@@ -465,8 +465,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         rewriter.setInsertionPointToStart(LoopParentBlock);
         auto loc = UnknownLoc::get(getContext());
         clift::LoopOp CliftLoop = rewriter.create<clift::LoopOp>(loc);
-        LLVM::UnreachableOp Unreachable =
-            rewriter.create<LLVM::UnreachableOp>(loc);
 
         // We create a clone of the blocks in the new `CliftLoop` region.
         assert(CliftLoop->getNumRegions() == 1);
@@ -497,6 +495,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
             ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(region);
 
+        BlockSet CliftLoopSuccessors;
         for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
 
           // Create the label in the first first basic block of the root region
@@ -526,6 +525,32 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           IRMapping GotoMapping;
           GotoMapping.map(Successor, GotoBlock);
           updateTerminatorOperands(Exit, GotoMapping);
+
+          // Accumulate all the successors reached through the `clift.goto`
+          // statements, so that we can later restore the edge on the control
+          // flow graph in the parent region.
+          CliftLoopSuccessors.insert(Successor);
+        }
+
+        // In the `clift.loop` parent block we insert a switch statement
+        // preserving the control flow between `clift.goto` label destinations.
+        rewriter.setInsertionPointToEnd(LoopParentBlock);
+
+        if (CliftLoopSuccessors.size() == 0) {
+        } else if (CliftLoopSuccessors.size() == 1) {
+          mlir::Block *FirstSuccessor = *CliftLoopSuccessors.begin();
+          rewriter.create<LLVM::BrOp>(loc, FirstSuccessor);
+        } else if (CliftLoopSuccessors.size() == 2) {
+          mlir::Value ConstantValue = rewriter.create<LLVM::ConstantOp>(
+              loc, rewriter.getBoolAttr(false));
+          mlir::Block *FirstSuccessor = *CliftLoopSuccessors.begin();
+          mlir::Block *SecondSuccessor =
+              *std::next(CliftLoopSuccessors.begin());
+          rewriter.create<LLVM::CondBrOp>(loc, ConstantValue, FirstSuccessor,
+                                          SecondSuccessor);
+        } else {
+          // TODO: implement this with a `LLVM::SwitchOp` operation.
+          assert(false);
         }
 
         // Update in the parent region the status of the nodes.
