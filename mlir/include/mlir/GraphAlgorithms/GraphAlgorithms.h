@@ -482,6 +482,11 @@ llvm::DenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
   return ShortestPathFromEntry;
 }
 
+template <class NodeT>
+bool setContains(llvm::SmallPtrSetImpl<NodeT> &Set, NodeT &Element) {
+  return Set.contains(Element);
+}
+
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
 llvm::DenseMap<NodeRef, size_t>
@@ -496,13 +501,84 @@ getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   for (NodeRef Block : Region) {
     for (NodeRef Predecessor :
          llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
-      if (not Region.contains(Predecessor)) {
+      if (not setContains(Region, Predecessor)) {
         Result[Block]++;
       }
     }
   }
 
   return Result;
+}
+
+template <class NodeT>
+size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) {
+  auto MapIt = Map.find(Element);
+  assert(MapIt != Map.end());
+  return MapIt->second;
+}
+
+template <class NodeT>
+NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
+                 llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
+                 llvm::SmallVectorImpl<NodeT> &RPOT) {
+  // Elect the Entry as the the candidate entry with the largest number of
+  // incoming edges from outside the region.
+  // If there's a tie, i.e. there are 2 or more candidate entries with the
+  // same number of incoming edges from an outer region, we select the entry
+  // with the minimal shortest path from entry.
+  // It it's still a tie, i.e. there are 2 or more candidate entries with the
+  // same number of incoming edges from an outer region and the same minimal
+  // shortest path from entry, then we disambiguate by picking the entry that
+  // comes first in RPOT.
+  NodeT Entry = Entry = EntryCandidates.begin()->first;
+  {
+    size_t MaxNEntries = EntryCandidates.begin()->second;
+    auto ShortestPathIt = ShortestPathFromEntry.find(Entry);
+    assert(ShortestPathIt != ShortestPathFromEntry.end());
+    size_t ShortestPath = mapAt(ShortestPathFromEntry, Entry);
+    auto EntriesEnd = EntryCandidates.end();
+    for (NodeT Block : RPOT) {
+      auto EntriesIt = EntryCandidates.find(Block);
+      if (EntriesIt != EntriesEnd) {
+        const auto &[EntryCandidate, NumIncoming] = *EntriesIt;
+        if (NumIncoming > MaxNEntries) {
+          Entry = EntryCandidate;
+          ShortestPath = mapAt(ShortestPathFromEntry, EntryCandidate);
+        } else if (NumIncoming == MaxNEntries) {
+          size_t SP = mapAt(ShortestPathFromEntry, EntryCandidate);
+          if (SP < ShortestPath) {
+            Entry = EntryCandidate;
+            ShortestPath = SP;
+          }
+        }
+      }
+    }
+  }
+  assert(Entry != nullptr);
+  return Entry;
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
+                   llvm::SmallPtrSetImpl<NodeRef> &Region, NodeRef Entry) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LateEntryPairs;
+  for (const auto &[Other, NumIncoming] : EntryCandidates) {
+    if (Other != Entry) {
+      llvm::SmallVector<NodeRef, 4> OutsidePredecessor;
+      for (NodeRef Predecessor :
+           llvm::make_range(GT::child_begin(Other), GT::child_end(Other))) {
+        if (not setContains(Region, Predecessor)) {
+          OutsidePredecessor.push_back(Predecessor);
+          LateEntryPairs.push_back({Predecessor, Other});
+        }
+      }
+      assert(OutsidePredecessor.size() == NumIncoming);
+    }
+  }
+
+  return LateEntryPairs;
 }
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
@@ -518,11 +594,55 @@ getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   for (NodeRef Block : Region) {
     for (NodeRef Successor :
          llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
-      if (not Region.contains(Successor)) {
+      if (not setContains(Region, Successor)) {
         ExitSuccessorPairs.push_back({Block, Successor});
       }
     }
   }
 
   return ExitSuccessorPairs;
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+getPredecessorNodePairs(NodeRef Node) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> PredecessorNodePairs;
+  for (NodeRef Predecessor :
+       llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+    PredecessorNodePairs.push_back({Predecessor, Node});
+  }
+
+  return PredecessorNodePairs;
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+getLoopPredecessorNodePairs(NodeRef Node,
+                            llvm::SmallPtrSetImpl<NodeRef> &Region) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LoopPredecessorNodePairs;
+  for (NodeRef Predecessor :
+       llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+    if (not setContains(Region, Predecessor)) {
+      LoopPredecessorNodePairs.push_back({Predecessor, Node});
+    }
+  }
+
+  return LoopPredecessorNodePairs;
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> ContinueNodePairs;
+  for (NodeRef Predecessor :
+       llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
+    if (not setContains(Region, Predecessor)) {
+      ContinueNodePairs.push_back({Predecessor, Entry});
+    }
+  }
+
+  return ContinueNodePairs;
 }
