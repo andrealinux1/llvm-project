@@ -374,6 +374,24 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  void updateParentWithCliftLoop(BlockSet &Region,
+                                 revng::detail::ParentTree<mlir::Block *> &Pt,
+                                 mlir::Block *LoopParentBlock) const {
+    // Update in the parent region the status of the nodes.
+    if (Pt.hasParent(Region)) {
+
+      // Insert in the parent region the block containing the `clift.loop`.
+      BlockSet &ParentRegion = Pt.getParent(Region);
+      ParentRegion.insert(LoopParentBlock);
+
+      // Remove from the parent region all the blocks that now constitute
+      // the body of the `clift.loop`.
+      for (mlir::Block *B : Region) {
+        ParentRegion.erase(B);
+      }
+    }
+  }
+
   void performCliftLoopGeneration(
       mlir::Region &Reg, mlir::PatternRewriter &Rewriter,
       revng::detail::ParentTree<mlir::Block *> &Pt) const {
@@ -504,19 +522,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       generateCliftContinue(region, Entry, Rewriter, LoopRegion);
 
-      // Update in the parent region the status of the nodes.
-      if (Pt.hasParent(region)) {
-
-        // Insert in the parent region the block containing the `clift.loop`.
-        BlockSet &ParentRegion = Pt.getParent(region);
-        ParentRegion.insert(LoopParentBlock);
-
-        // Remove from the parent region all the blocks that now constitute
-        // the body of the `clift.loop`.
-        for (mlir::Block *B : region) {
-          ParentRegion.erase(B);
-        }
-      }
+      updateParentWithCliftLoop(region, Pt, LoopParentBlock);
 
       // Increment region index for next iteration.
       RegionIndex++;
