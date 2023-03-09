@@ -317,6 +317,22 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return LoopPredecessorNodePairs;
   }
 
+  template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
+            typename NodeRef = typename GT::NodeRef>
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+  getContinueNodePairs(NodeRef Entry,
+                       llvm::SmallPtrSetImpl<NodeRef> &Region) const {
+    llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> ContinueNodePairs;
+    for (NodeRef Predecessor :
+         llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
+      if (Region.contains(Predecessor)) {
+        ContinueNodePairs.push_back({Predecessor, Entry});
+      }
+    }
+
+    return ContinueNodePairs;
+  }
+
   void performRestructureCliftRegion(mlir::Region &reg,
                                      mlir::PatternRewriter &rewriter) const {
     bool OutlinedCycle = true;
@@ -521,7 +537,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           rewriter.create<clift::GoToOp>(loc, MakeLabel);
 
           // Subsitute the outgoing edges with a branch to the `goto`s
-          // containing blocks.
+          // containing block.
           IRMapping GotoMapping;
           GotoMapping.map(Successor, GotoBlock);
           updateTerminatorOperands(Exit, GotoMapping);
@@ -551,6 +567,27 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         } else {
           // TODO: implement this with a `LLVM::SwitchOp` operation.
           assert(false);
+        }
+
+        // Insert the `clift.continue` operation.
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+            ContinueNodePairs =
+                getContinueNodePairs<mlir::Block *>(Entry, region);
+        for (const auto &[Continue, Entry] : ContinueNodePairs) {
+
+          // Creation of a block that will contain the `clift.continue`
+          // operation.
+          mlir::Block *ContinueBlock = rewriter.createBlock(&LoopRegion);
+
+          // Create the `clift.continue` operation.
+          rewriter.setInsertionPointToStart(ContinueBlock);
+          rewriter.create<clift::ContinueOp>(loc);
+
+          // Substitute the retreating edges to the entry with a branch to the
+          // `continue` containing block.
+          IRMapping ContinueMapping;
+          ContinueMapping.map(Entry, ContinueBlock);
+          updateTerminatorOperands(Continue, ContinueMapping);
         }
 
         // Update in the parent region the status of the nodes.
