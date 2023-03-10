@@ -348,11 +348,40 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  void populateCliftLoopBody(clift::LoopOp CliftLoop, BlockSet &Region,
+                             mlir::Block *Entry,
+                             mlir::PatternRewriter &Rewriter) const {
+    // We create a clone of the blocks in the new `CliftLoop` region.
+    assert(CliftLoop->getNumRegions() == 1);
+    mlir::Region &LoopRegion = CliftLoop->getRegion(0);
+
+    // Create a new empty block in the that we will use only as a
+    // placeholder for inserting other blocks, then we will remove it.
+    mlir::Block *EmptyBlock = Rewriter.createBlock(&LoopRegion);
+    mlir::Block *PlaceholderBlock = EmptyBlock;
+
+    // Explicitly handle the entry block, which must come first in the
+    // region, and reverse insert all the other blocks since we are adding
+    // before.
+    for (mlir::Block *B : Region) {
+      if (B != Entry) {
+        B->moveBefore(PlaceholderBlock);
+        PlaceholderBlock = B;
+      }
+    }
+    Entry->moveBefore(PlaceholderBlock);
+
+    EmptyBlock->moveBefore(Entry);
+    Rewriter.setInsertionPointToEnd(EmptyBlock);
+    auto loc = UnknownLoc::get(getContext());
+    Rewriter.create<LLVM::BrOp>(loc, Entry);
+  }
+
   void generateCliftGotoSuccessors(BlockSet &Region,
                                    BlockSet &CliftLoopSuccessors,
                                    mlir::Region &Reg,
                                    mlir::PatternRewriter &Rewriter,
-                                   mlir::Region &LoopRegion) const {
+                                   clift::LoopOp CliftLoop) const {
 
     // Handle the outgoing edges from the region.
     llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
@@ -375,7 +404,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // We need create a new basic block which will contain the `goto`
       // statement, and then subsistute the branch to that block.
-      mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
+      mlir::Block *GotoBlock = Rewriter.createBlock(&CliftLoop->getRegion(0));
 
       // Create the `goto` in the new trampoline block.
       Rewriter.setInsertionPointToStart(GotoBlock);
@@ -422,7 +451,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
   void generateCliftContinue(BlockSet &Region, mlir::Block *Entry,
                              mlir::PatternRewriter &Rewriter,
-                             mlir::Region &LoopRegion) const {
+                             clift::LoopOp CliftLoop) const {
 
     // Insert the `clift.continue` operation.
     llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
@@ -431,7 +460,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // Creation of a block that will contain the `clift.continue`
       // operation.
-      mlir::Block *ContinueBlock = Rewriter.createBlock(&LoopRegion);
+      mlir::Block *ContinueBlock =
+          Rewriter.createBlock(&CliftLoop->getRegion(0));
 
       // Create the `clift.continue` operation.
       Rewriter.setInsertionPointToStart(ContinueBlock);
@@ -507,39 +537,16 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       auto loc = UnknownLoc::get(getContext());
       clift::LoopOp CliftLoop = Rewriter.create<clift::LoopOp>(loc);
 
-      // We create a clone of the blocks in the new `CliftLoop` region.
-      assert(CliftLoop->getNumRegions() == 1);
-      mlir::Region &LoopRegion = CliftLoop->getRegion(0);
-
-      // Create a new empty block in the that we will use only as a
-      // placeholder for inserting other blocks, then we will remove it.
-      mlir::Block *EmptyBlock = Rewriter.createBlock(&LoopRegion);
-      mlir::Block *PlaceholderBlock = EmptyBlock;
-
-      // Try using the `moveBefore` for blocks.
-      // Explicitly handle the entry block, which must come first in the
-      // region, and reverse insert all the other blocks since we are adding
-      // before.
-      for (mlir::Block *B : region) {
-        if (B != Entry) {
-          B->moveBefore(PlaceholderBlock);
-          PlaceholderBlock = B;
-        }
-      }
-      Entry->moveBefore(PlaceholderBlock);
-
-      EmptyBlock->moveBefore(Entry);
-      Rewriter.setInsertionPointToEnd(EmptyBlock);
-      Rewriter.create<LLVM::BrOp>(loc, Entry);
+      populateCliftLoopBody(CliftLoop, region, Entry, Rewriter);
 
       BlockSet CliftLoopSuccessors;
       generateCliftGotoSuccessors(region, CliftLoopSuccessors, Reg, Rewriter,
-                                  LoopRegion);
+                                  CliftLoop);
 
       generateCliftLoopSuccessors(LoopParentBlock, CliftLoopSuccessors,
                                   Rewriter);
 
-      generateCliftContinue(region, Entry, Rewriter, LoopRegion);
+      generateCliftContinue(region, Entry, Rewriter, CliftLoop);
 
       updateParentWithCliftLoop(region, Pt, LoopParentBlock);
 
