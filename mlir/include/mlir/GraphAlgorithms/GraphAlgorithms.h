@@ -264,7 +264,7 @@ bool intersect(llvm::SmallPtrSet<NodeT, 4> &First,
   FirstSet.insert(First.begin(), First.end());
   SecondSet.insert(Second.begin(), Second.end());
 
-  llvm::SmallVector<NodeT, 4> Intersection;
+  llvm::SmallVector<NodeT> Intersection;
   std::set_intersection(FirstSet.begin(), FirstSet.end(), SecondSet.begin(),
                         SecondSet.end(), std::back_inserter(Intersection));
   return !Intersection.empty();
@@ -292,7 +292,7 @@ bool equal(llvm::SmallPtrSet<NodeT, 4> &First,
 }
 
 template <class NodeT>
-bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &R) {
+bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &R) {
   for (auto RegionIt1 = R.begin(); RegionIt1 != R.end(); RegionIt1++) {
     for (auto RegionIt2 = std::next(RegionIt1); RegionIt2 != R.end();
          RegionIt2++) {
@@ -313,7 +313,7 @@ bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &R) {
 }
 
 template <class NodeT>
-void simplifyRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &Rs) {
+void simplifyRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &Rs) {
   bool Changes = true;
   while (Changes) {
     Changes = simplifyRegionsStep(Rs);
@@ -323,7 +323,7 @@ void simplifyRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &Rs) {
 // Reorder the vector containing the regions so that they are in increasing size
 // order.
 template <class NodeT>
-void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>, 4> &Rs) {
+void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &Rs) {
   std::sort(Rs.begin(), Rs.end(),
             [](llvm::SmallPtrSet<NodeT, 4> &First,
                llvm::SmallPtrSet<NodeT, 4> &Second) {
@@ -343,7 +343,7 @@ class ParentTree {
   using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
   using RegionSet = llvm::SmallPtrSet<NodeT, 4>;
 
-  using links_container = llvm::SmallVector<RegionSet, 4>;
+  using links_container = llvm::SmallVector<RegionSet>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
   using links_range = llvm::iterator_range<links_iterator>;
@@ -597,13 +597,13 @@ NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
 
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
                    llvm::SmallPtrSetImpl<NodeRef> &Region, NodeRef Entry) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LateEntryPairs;
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
   for (const auto &[Other, NumIncoming] : EntryCandidates) {
     if (Other != Entry) {
-      llvm::SmallVector<NodeRef, 4> OutsidePredecessor;
+      llvm::SmallVector<NodeRef> OutsidePredecessor;
       for (NodeRef Predecessor :
            llvm::make_range(GT::child_begin(Other), GT::child_end(Other))) {
         if (not setContains(Region, Predecessor)) {
@@ -642,9 +642,9 @@ getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
 
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getPredecessorNodePairs(NodeRef Node) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> PredecessorNodePairs;
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> PredecessorNodePairs;
   for (NodeRef Predecessor :
        llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
     PredecessorNodePairs.push_back({Predecessor, Node});
@@ -655,10 +655,10 @@ getPredecessorNodePairs(NodeRef Node) {
 
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getLoopPredecessorNodePairs(NodeRef Node,
                             llvm::SmallPtrSetImpl<NodeRef> &Region) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> LoopPredecessorNodePairs;
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LoopPredecessorNodePairs;
   for (NodeRef Predecessor :
        llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
     if (not setContains(Region, Predecessor)) {
@@ -671,9 +671,9 @@ getLoopPredecessorNodePairs(NodeRef Node,
 
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>, 4> ContinueNodePairs;
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
   for (NodeRef Predecessor :
        llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
     if (not setContains(Region, Predecessor)) {

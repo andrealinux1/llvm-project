@@ -57,9 +57,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
   using BlockSet = llvm::SmallPtrSet<mlir::Block *, 4>;
-  using BlockSetVect = llvm::SmallVector<BlockSet, 4>;
+  using BlockSetVect = llvm::SmallVector<BlockSet>;
   using BlockIntMap = llvm::DenseMap<mlir::Block *, size_t>;
-  using BlockVect = llvm::SmallVector<mlir::Block *, 4>;
+  using BlockVect = llvm::SmallVector<mlir::Block *>;
 
   using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
   mlir::LogicalResult
@@ -158,7 +158,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
   // Returns true if during this iteration we outlined a loop construct.
   bool outlineFirstIteration(
-      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
           &LateEntryPairs,
       BlockSet &Region, BlockSet &OutlinedNodes, mlir::Block *Entry,
       mlir::PatternRewriter &Rewriter) const {
@@ -289,7 +289,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       printRegions(Pt.getRegions());
 
       // Compute the Reverse Post Order.
-      llvm::SmallVector<mlir::Block *, 4> RPOT;
+      llvm::SmallVector<mlir::Block *> RPOT;
       using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
       llvm::copy(RPOTraversal(&FunctionRegion), std::back_inserter(RPOT));
 
@@ -326,7 +326,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         // Now that elected the entry node we can prooced with the inlining.
         // Extract for each non-elected entry, the inlining path.
-        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
             LateEntryPairs = getOutlinedEntries<mlir::Block *>(EntryCandidates,
                                                                Region, Entry);
 
@@ -366,7 +366,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // predecessors.
     IRMapping EntryMapping;
     EntryMapping.map(Entry, LoopParentBlock);
-    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
         PredecessorNodePairs =
             getLoopPredecessorNodePairs<mlir::Block *>(Entry, Region);
     for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
@@ -416,7 +416,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
                                    mlir::PatternRewriter &Rewriter,
                                    clift::LoopOp CliftLoop) const {
     // Handle the outgoing edges from the region.
-    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
         ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
 
     for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
@@ -486,7 +486,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
                              mlir::PatternRewriter &Rewriter,
                              clift::LoopOp CliftLoop) const {
     // Insert the `clift.continue` operation.
-    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
         ContinueNodePairs = getContinueNodePairs<mlir::Block *>(Entry, Region);
     for (const auto &[Continue, Entry] : ContinueNodePairs) {
 
