@@ -72,9 +72,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     assert(Op->getNumRegions() == 1);
 
     // Transform only regions which have an actual size.
-    mlir::Region &Reg = Op->getRegion(0);
-    if (not Reg.getBlocks().empty()) {
-      performRestructureCliftRegion(Reg, Rewriter);
+    mlir::Region &FunctionRegion = Op->getRegion(0);
+    if (not FunctionRegion.getBlocks().empty()) {
+      performRestructureCliftRegion(FunctionRegion, Rewriter);
     }
     return success();
   }
@@ -226,7 +226,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   }
 
   void performRegionIdentification(
-      mlir::Region &Reg, mlir::PatternRewriter &Rewriter,
+      mlir::Region &FunctionRegion, mlir::PatternRewriter &Rewriter,
       revng::detail::ParentTree<mlir::Block *> &Pt) const {
     // Region identification and first iteration outlining in a fixed point
     // fashion, until first iteration outlining does not generate new cyclic
@@ -239,7 +239,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // identification process is run.
       Pt.clear();
 
-      EdgeSet Backedges = getBackedges(&Reg.front());
+      EdgeSet Backedges = getBackedges(&FunctionRegion.front());
       llvm::dbgs() << "\nInitial backedges:\n";
       printBackedges(Backedges);
       llvm::dbgs() << "\nInitial reachables:\n";
@@ -251,7 +251,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // Push manually the `root` region in the identified regions.
       BlockSet RootRegion;
-      for (mlir::Block &B : Reg) {
+      for (mlir::Block &B : FunctionRegion) {
         RootRegion.insert(&B);
       }
       Regions.push_back(RootRegion);
@@ -291,11 +291,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Compute the Reverse Post Order.
       llvm::SmallVector<mlir::Block *, 4> RPOT;
       using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
-      llvm::copy(RPOTraversal(&Reg), std::back_inserter(RPOT));
+      llvm::copy(RPOTraversal(&FunctionRegion), std::back_inserter(RPOT));
 
       // Compute the distance of each node from the entry node.
       llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
-          computeDistanceFromEntry(&Reg);
+          computeDistanceFromEntry(&FunctionRegion);
 
       size_t RegionIndex = 0;
       for (BlockSet &Region : Pt.regions()) {
@@ -412,7 +412,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
   void generateCliftGotoSuccessors(BlockSet &Region,
                                    BlockSet &CliftLoopSuccessors,
-                                   mlir::Region &Reg,
+                                   mlir::Region &FunctionRegion,
                                    mlir::PatternRewriter &Rewriter,
                                    clift::LoopOp CliftLoop) const {
     // Handle the outgoing edges from the region.
@@ -423,9 +423,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // Create the label in the first first basic block of the root region
       // of the function.
-      Rewriter.setInsertionPoint(&Reg.front(), Reg.front().begin());
+      Rewriter.setInsertionPoint(&FunctionRegion.front(),
+                                 FunctionRegion.front().begin());
       auto Loc = UnknownLoc::get(getContext());
-      Rewriter.setInsertionPoint(&*(Reg.op_begin()));
+      Rewriter.setInsertionPoint(&*(FunctionRegion.op_begin()));
 
       clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
 
@@ -527,7 +528,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   }
 
   void performCliftLoopGeneration(
-      mlir::Region &Reg, mlir::PatternRewriter &Rewriter,
+      mlir::Region &FunctionRegion, mlir::PatternRewriter &Rewriter,
       revng::detail::ParentTree<mlir::Block *> &Pt) const {
 
     // Perform `clift.loop` generation.
@@ -545,8 +546,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       populateCliftLoopBody(CliftLoop, Region, Entry, Rewriter);
 
       BlockSet CliftLoopSuccessors;
-      generateCliftGotoSuccessors(Region, CliftLoopSuccessors, Reg, Rewriter,
-                                  CliftLoop);
+      generateCliftGotoSuccessors(Region, CliftLoopSuccessors, FunctionRegion,
+                                  Rewriter, CliftLoop);
 
       generateCliftLoopSuccessors(CliftLoop, CliftLoopSuccessors, Rewriter);
 
@@ -559,7 +560,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void performRestructureCliftRegion(mlir::Region &Reg,
+  void performRestructureCliftRegion(mlir::Region &FunctionRegion,
                                      mlir::PatternRewriter &Rewriter) const {
 
     // Declare the global `ParentTree` object which will contain the region
@@ -567,10 +568,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     revng::detail::ParentTree<mlir::Block *> Pt;
 
     // Perform region identification.
-    performRegionIdentification(Reg, Rewriter, Pt);
+    performRegionIdentification(FunctionRegion, Rewriter, Pt);
 
     // Perform `clift.loop` generation.
-    performCliftLoopGeneration(Reg, Rewriter, Pt);
+    performCliftLoopGeneration(FunctionRegion, Rewriter, Pt);
   }
 };
 
