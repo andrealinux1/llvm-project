@@ -348,6 +348,52 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  void generateCliftGotoSuccessors(BlockSet &Region,
+                                   BlockSet &CliftLoopSuccessors,
+                                   mlir::Region &Reg,
+                                   mlir::PatternRewriter &Rewriter,
+                                   mlir::Region &LoopRegion) const {
+
+    // Handle the outgoing edges from the region.
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+        ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
+
+    for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
+
+      // Create the label in the first first basic block of the root region
+      // of the function.
+      Rewriter.setInsertionPoint(&Reg.front(), Reg.front().begin());
+      auto loc = UnknownLoc::get(getContext());
+      Rewriter.setInsertionPoint(&*(Reg.op_begin()));
+
+      clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(loc);
+
+      // Create the label in the successor `Block`.
+      Rewriter.setInsertionPointToStart(Successor);
+      clift::AssignLabelOp Label =
+          Rewriter.create<clift::AssignLabelOp>(loc, MakeLabel);
+
+      // We need create a new basic block which will contain the `goto`
+      // statement, and then subsistute the branch to that block.
+      mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
+
+      // Create the `goto` in the new trampoline block.
+      Rewriter.setInsertionPointToStart(GotoBlock);
+      Rewriter.create<clift::GoToOp>(loc, MakeLabel);
+
+      // Subsitute the outgoing edges with a branch to the `goto`s
+      // containing block.
+      IRMapping GotoMapping;
+      GotoMapping.map(Successor, GotoBlock);
+      updateTerminatorOperands(Exit, GotoMapping);
+
+      // Accumulate all the successors reached through the `clift.goto`
+      // statements, so that we can later restore the edge on the control
+      // flow graph in the parent region.
+      CliftLoopSuccessors.insert(Successor);
+    }
+  }
+
   void generateCliftLoopSuccessors(mlir::Block *LoopParentBlock,
                                    BlockSet &CliftLoopSuccessors,
                                    mlir::PatternRewriter &Rewriter) const {
@@ -486,45 +532,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       Rewriter.setInsertionPointToEnd(EmptyBlock);
       Rewriter.create<LLVM::BrOp>(loc, Entry);
 
-      // Handle the outgoing edges from the region.
-      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
-          ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(region);
-
       BlockSet CliftLoopSuccessors;
-      for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
-
-        // Create the label in the first first basic block of the root region
-        // of the function.
-        Rewriter.setInsertionPoint(&Reg.front(), Reg.front().begin());
-        auto loc = UnknownLoc::get(getContext());
-        Rewriter.setInsertionPoint(&*(Reg.op_begin()));
-
-        clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(loc);
-
-        // Create the label in the successor `Block`.
-        Rewriter.setInsertionPointToStart(Successor);
-        clift::AssignLabelOp Label =
-            Rewriter.create<clift::AssignLabelOp>(loc, MakeLabel);
-
-        // We need create a new basic block which will contain the `goto`
-        // statement, and then subsistute the branch to that block.
-        mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
-
-        // Create the `goto` in the new trampoline block.
-        Rewriter.setInsertionPointToStart(GotoBlock);
-        Rewriter.create<clift::GoToOp>(loc, MakeLabel);
-
-        // Subsitute the outgoing edges with a branch to the `goto`s
-        // containing block.
-        IRMapping GotoMapping;
-        GotoMapping.map(Successor, GotoBlock);
-        updateTerminatorOperands(Exit, GotoMapping);
-
-        // Accumulate all the successors reached through the `clift.goto`
-        // statements, so that we can later restore the edge on the control
-        // flow graph in the parent region.
-        CliftLoopSuccessors.insert(Successor);
-      }
+      generateCliftGotoSuccessors(region, CliftLoopSuccessors, Reg, Rewriter,
+                                  LoopRegion);
 
       generateCliftLoopSuccessors(LoopParentBlock, CliftLoopSuccessors,
                                   Rewriter);
