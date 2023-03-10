@@ -348,6 +348,39 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  clift::LoopOp generateCliftLoop(BlockSet &Region, mlir::Block *Entry,
+                                  mlir::PatternRewriter &Rewriter) const {
+    // Obtain the parent region of the function we are restructuring.
+    mlir::Region *ParentRegion = nullptr;
+    for (mlir::Block *B : Region) {
+      if (ParentRegion == nullptr) {
+        ParentRegion = B->getParent();
+      }
+      assert(B->getParent() == ParentRegion);
+    }
+
+    // Create a new block to contain the `clift.loop` operation.
+    mlir::Block *LoopParentBlock = Rewriter.createBlock(ParentRegion);
+
+    // Connect the block containing the `clift.loop` to the old
+    // predecessors.
+    IRMapping EntryMapping;
+    EntryMapping.map(Entry, LoopParentBlock);
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
+        PredecessorNodePairs =
+            getLoopPredecessorNodePairs<mlir::Block *>(Entry, Region);
+    for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
+      assert(EntryCandidate == Entry);
+      updateTerminatorOperands(Predecessor, EntryMapping);
+    }
+
+    // Create a new `clift.loop` operation.
+    Rewriter.setInsertionPointToStart(LoopParentBlock);
+    auto loc = UnknownLoc::get(getContext());
+    clift::LoopOp CliftLoop = Rewriter.create<clift::LoopOp>(loc);
+    return CliftLoop;
+  }
+
   void populateCliftLoopBody(clift::LoopOp CliftLoop, BlockSet &Region,
                              mlir::Block *Entry,
                              mlir::PatternRewriter &Rewriter) const {
@@ -423,12 +456,12 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void generateCliftLoopSuccessors(mlir::Block *LoopParentBlock,
+  void generateCliftLoopSuccessors(clift::LoopOp CliftLoop,
                                    BlockSet &CliftLoopSuccessors,
                                    mlir::PatternRewriter &Rewriter) const {
     // In the `clift.loop` parent block we insert a switch statement
     // preserving the control flow between `clift.goto` label destinations.
-    Rewriter.setInsertionPointToEnd(LoopParentBlock);
+    Rewriter.setInsertionPointAfter(CliftLoop);
 
     auto Loc = UnknownLoc::get(getContext());
 
@@ -478,12 +511,13 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
   void updateParentWithCliftLoop(BlockSet &Region,
                                  revng::detail::ParentTree<mlir::Block *> &Pt,
-                                 mlir::Block *LoopParentBlock) const {
+                                 clift::LoopOp CliftLoop) const {
     // Update in the parent region the status of the nodes.
     if (Pt.hasParent(Region)) {
 
       // Insert in the parent region the block containing the `clift.loop`.
       BlockSet &ParentRegion = Pt.getParent(Region);
+      mlir::Block *LoopParentBlock = CliftLoop->getBlock();
       ParentRegion.insert(LoopParentBlock);
 
       // Remove from the parent region all the blocks that now constitute
@@ -505,37 +539,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         continue;
       }
 
-      // Obtain the parent region of the function we are restructuring.
-      mlir::Region *ParentRegion = nullptr;
-      for (mlir::Block *B : region) {
-        if (ParentRegion == nullptr) {
-          ParentRegion = B->getParent();
-        }
-        assert(B->getParent() == ParentRegion);
-      }
-
-      // Create a new block to contain the `clift.loop` operation.
-      mlir::Block *LoopParentBlock = Rewriter.createBlock(ParentRegion);
-
       // Retrieve the elected entry block.
       mlir::Block *Entry = Pt.getRegionEntry(region);
 
-      // Connect the block containing the `clift.loop` to the old
-      // predecessors.
-      IRMapping EntryMapping;
-      EntryMapping.map(Entry, LoopParentBlock);
-      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>, 4>
-          PredecessorNodePairs =
-              getLoopPredecessorNodePairs<mlir::Block *>(Entry, region);
-      for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
-        assert(EntryCandidate == Entry);
-        updateTerminatorOperands(Predecessor, EntryMapping);
-      }
-
-      // Create a new `clift.loop` operation.
-      Rewriter.setInsertionPointToStart(LoopParentBlock);
-      auto loc = UnknownLoc::get(getContext());
-      clift::LoopOp CliftLoop = Rewriter.create<clift::LoopOp>(loc);
+      clift::LoopOp CliftLoop = generateCliftLoop(region, Entry, Rewriter);
 
       populateCliftLoopBody(CliftLoop, region, Entry, Rewriter);
 
@@ -543,12 +550,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       generateCliftGotoSuccessors(region, CliftLoopSuccessors, Reg, Rewriter,
                                   CliftLoop);
 
-      generateCliftLoopSuccessors(LoopParentBlock, CliftLoopSuccessors,
-                                  Rewriter);
+      generateCliftLoopSuccessors(CliftLoop, CliftLoopSuccessors, Rewriter);
 
       generateCliftContinue(region, Entry, Rewriter, CliftLoop);
 
-      updateParentWithCliftLoop(region, Pt, LoopParentBlock);
+      updateParentWithCliftLoop(region, Pt, CliftLoop);
 
       // Increment region index for next iteration.
       RegionIndex++;
