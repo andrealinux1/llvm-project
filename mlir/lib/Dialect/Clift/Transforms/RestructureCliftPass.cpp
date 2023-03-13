@@ -525,7 +525,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void generateCliftRetreating(mlir::Block *Entry, mlir::Region &FunctionRegion,
+  void generateCliftRetreating(mlir::Block *Entry,
                                mlir::PatternRewriter &Rewriter,
                                clift::LoopOp CliftLoop) const {
     // Generate the abnormal retreating flows with the use of a couple of a
@@ -544,10 +544,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       assert(Target != Entry);
 
       // Create the label in the first basic block of the `clift.loop`.
-      Rewriter.setInsertionPoint(&FunctionRegion.front(),
-                                 FunctionRegion.front().begin());
+      mlir::Region &LoopRegion = CliftLoop->getRegion(0);
+      Rewriter.setInsertionPoint(&LoopRegion.front(),
+                                 LoopRegion.front().begin());
       auto Loc = UnknownLoc::get(getContext());
-      Rewriter.setInsertionPoint(&*(FunctionRegion.op_begin()));
 
       clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
 
@@ -557,7 +557,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // We need to create a new basic block containing the `clift.goto`, and
       // then substitute the branch to this block.
-      mlir::Block *GotoBlock = Rewriter.createBlock(&CliftLoop->getRegion(0));
+      mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
 
       // Create the `clift.goto` in the trampoline block.
       Rewriter.setInsertionPointToStart(GotoBlock);
@@ -598,7 +598,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       updateParentWithCliftLoop(Region, Pt, CliftLoop);
 
-      generateCliftRetreating(Entry, FunctionRegion, Rewriter, CliftLoop);
+      generateCliftRetreating(Entry, Rewriter, CliftLoop);
 
       // Increment region index for next iteration.
       RegionIndex++;
