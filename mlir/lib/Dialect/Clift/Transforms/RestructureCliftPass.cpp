@@ -421,8 +421,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
     for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
 
-      // Create the label in the first first basic block of the root region
-      // of the function.
+      // Create the label in the first basic block of the root region of the
+      // function.
       Rewriter.setInsertionPoint(&FunctionRegion.front(),
                                  FunctionRegion.front().begin());
       auto Loc = UnknownLoc::get(getContext());
@@ -430,10 +430,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
 
-      // Create the label in the successor `Block`.
+      // Assign the label in the successor `Block`.
       Rewriter.setInsertionPointToStart(Successor);
-      clift::AssignLabelOp Label =
-          Rewriter.create<clift::AssignLabelOp>(Loc, MakeLabel);
+      Rewriter.create<clift::AssignLabelOp>(Loc, MakeLabel);
 
       // We need create a new basic block which will contain the `goto`
       // statement, and then subsistute the branch to that block.
