@@ -685,7 +685,7 @@ getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
   for (NodeRef Predecessor :
        llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
-    if (not setContains(Region, Predecessor)) {
+    if (setContains(Region, Predecessor)) {
       ContinueNodePairs.push_back({Predecessor, Entry});
     }
   }
