@@ -426,7 +426,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       Rewriter.setInsertionPoint(&FunctionRegion.front(),
                                  FunctionRegion.front().begin());
       auto Loc = UnknownLoc::get(getContext());
-      Rewriter.setInsertionPoint(&*(FunctionRegion.op_begin()));
 
       clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
 
