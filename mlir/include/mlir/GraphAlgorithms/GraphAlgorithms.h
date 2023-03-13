@@ -90,6 +90,7 @@ private:
   llvm::SmallPtrSet<NodeT, 4> Targets;
   llvm::DenseMap<NodeT, llvm::SmallPtrSet<NodeT, 4>> AdditionalNodes;
   NodeT Source = nullptr;
+  NodeT Target = nullptr;
   bool FirstInvocation = true;
 
 public:
@@ -98,6 +99,9 @@ public:
 
   // Assign the `Source` node.
   void assignSource(NodeT Block) { Source = Block; }
+
+  // Assign the `Target` node.
+  void assignTarget(NodeT Block) { Target = Block; }
 
   llvm::SmallPtrSet<NodeT, 4> getReachables() { return Targets; }
 
@@ -121,7 +125,11 @@ public:
     // Check that, if we are trying to insert a block which is the `Targets`
     // set, we add all the nodes on the current visiting stack in the
     // `Targets` set.
-    if (Targets.contains(Block)) {
+    auto BeginIt = llvm::GraphTraits<NodeT>::child_begin(Block);
+    auto EndIt = llvm::GraphTraits<NodeT>::child_end(Block);
+    size_t BlockSuccessorsN = std::distance(BeginIt, EndIt);
+    if ((Targets.contains(Block)) or
+        ((Target == nullptr) && (BlockSuccessorsN == 0))) {
       for (auto const &[K, V] : *this) {
         if (V) {
           Targets.insert(K);
@@ -200,6 +208,7 @@ nodesBetweenImpl(GraphT Source, GraphT Target,
 
   // Initialize the visited set with the target node, which is the boundary
   // that we don't want to trepass when finding reachable nodes.
+  State.assignTarget(Target);
   State.insertTarget(Target);
   State.insertInMap(Target, false);
 
