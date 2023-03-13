@@ -525,6 +525,51 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  void generateCliftRetreating(mlir::Block *Entry, mlir::Region &FunctionRegion,
+                               mlir::PatternRewriter &Rewriter,
+                               clift::LoopOp CliftLoop) const {
+    // Generate the abnormal retreating flows with the use of a couple of a
+    // `clift.label` and `clift.goto`.
+    EdgeSet LoopBackedges = getBackedges(Entry);
+    llvm::dbgs() << "\nAbnormal retreating backedges:\n";
+    printBackedges(LoopBackedges);
+
+    for (EdgeDescriptor RetreatingEdge : LoopBackedges) {
+      mlir::Block *Source = RetreatingEdge.first;
+      mlir::Block *Target = RetreatingEdge.second;
+
+      // We should not find an abnormal retreating pointing to the entry of
+      // the loop, we should have already transformed that into a
+      // `clift.continue`.
+      assert(Target != Entry);
+
+      // Create the label in the first basic block of the `clift.loop`.
+      Rewriter.setInsertionPoint(&FunctionRegion.front(),
+                                 FunctionRegion.front().begin());
+      auto Loc = UnknownLoc::get(getContext());
+      Rewriter.setInsertionPoint(&*(FunctionRegion.op_begin()));
+
+      clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
+
+      // Assign the label in the `Target` block.
+      Rewriter.setInsertionPointToStart(Target);
+      Rewriter.create<clift::AssignLabelOp>(Loc, MakeLabel);
+
+      // We need to create a new basic block containing the `clift.goto`, and
+      // then substitute the branch to this block.
+      mlir::Block *GotoBlock = Rewriter.createBlock(&CliftLoop->getRegion(0));
+
+      // Create the `clift.goto` in the trampoline block.
+      Rewriter.setInsertionPointToStart(GotoBlock);
+      Rewriter.create<clift::GoToOp>(Loc, MakeLabel);
+
+      // Remap the branches to the `clift.goto` block.
+      IRMapping GotoMapping;
+      GotoMapping.map(Target, GotoBlock);
+      updateTerminatorOperands(Source, GotoMapping);
+    }
+  }
+
   void performCliftLoopGeneration(
       mlir::Region &FunctionRegion, mlir::PatternRewriter &Rewriter,
       revng::detail::ParentTree<mlir::Block *> &Pt) const {
@@ -553,46 +598,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       updateParentWithCliftLoop(Region, Pt, CliftLoop);
 
-      // Generate the abnormal retreating flows with the use of a couple of a
-      // `clift.label` and `clift.goto`.
-      EdgeSet LoopBackedges = getBackedges(Entry);
-      llvm::dbgs() << "\nAbnormal retreating backedges:\n";
-      printBackedges(LoopBackedges);
-
-      for (EdgeDescriptor RetreatingEdge : LoopBackedges) {
-        mlir::Block *Source = RetreatingEdge.first;
-        mlir::Block *Target = RetreatingEdge.second;
-
-        // We should not find an abnormal retreating pointing to the entry of
-        // the loop, we should have already transformed that into a
-        // `clift.continue`.
-        assert(Target != Entry);
-
-        // Create the label in the first basic block of the `clift.loop`.
-        Rewriter.setInsertionPoint(&FunctionRegion.front(),
-                                   FunctionRegion.front().begin());
-        auto Loc = UnknownLoc::get(getContext());
-        Rewriter.setInsertionPoint(&*(FunctionRegion.op_begin()));
-
-        clift::MakeLabelOp MakeLabel = Rewriter.create<clift::MakeLabelOp>(Loc);
-
-        // Assign the label in the `Target` block.
-        Rewriter.setInsertionPointToStart(Target);
-        Rewriter.create<clift::AssignLabelOp>(Loc, MakeLabel);
-
-        // We need to create a new basic block containing the `clift.goto`, and
-        // then substitute the branch to this block.
-        mlir::Block *GotoBlock = Rewriter.createBlock(&CliftLoop->getRegion(0));
-
-        // Create the `clift.goto` in the trampoline block.
-        Rewriter.setInsertionPointToStart(GotoBlock);
-        Rewriter.create<clift::GoToOp>(Loc, MakeLabel);
-
-        // Remap the branches to the `clift.goto` block.
-        IRMapping GotoMapping;
-        GotoMapping.map(Target, GotoBlock);
-        updateTerminatorOperands(Source, GotoMapping);
-      }
+      generateCliftRetreating(Entry, FunctionRegion, Rewriter, CliftLoop);
 
       // Increment region index for next iteration.
       RegionIndex++;
