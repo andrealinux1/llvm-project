@@ -486,6 +486,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     auto Loc = UnknownLoc::get(getContext());
 
     if (CliftLoopSuccessors.size() == 0) {
+
+      // Even if we don't have any edge exiting from the `clift.loop`, we need
+      // to manually place a `UnreachableInst` after the `clift.loop`.
+      Rewriter.create<LLVM::UnreachableOp>(Loc);
     } else if (CliftLoopSuccessors.size() == 1) {
       mlir::Block *FirstSuccessor = *CliftLoopSuccessors.begin();
       Rewriter.create<LLVM::BrOp>(Loc, FirstSuccessor);
