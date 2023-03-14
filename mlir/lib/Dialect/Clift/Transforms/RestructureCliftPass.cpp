@@ -180,6 +180,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       StateType State(Lambda);
       BlockSet IterationOutlinedNodes;
       IRMapping CloneMapping;
+      IRMapping LateEntryOnlyMapping;
 
       using odf_iterator = llvm::df_iterator<mlir::Block *, StateType, true>;
       auto Begin = odf_iterator::begin(LateEntry, State);
@@ -223,8 +224,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       }
 
       // Remap the terminator of the predecessor node to point to the outlined
-      // iteration.
-      updateTerminatorOperands(Predecessor, CloneMapping);
+      // iteration. We need to manually extract from the `CloneMapping` only the
+      // entry relative to the `LateEntry` block, or we could wrongly map other
+      // branches to their clones extracted during this iteration.
+      LateEntryOnlyMapping.map(LateEntry, CloneMapping.lookup(LateEntry));
+      updateTerminatorOperands(Predecessor, LateEntryOnlyMapping);
     }
 
     return OutlinedCycle;
