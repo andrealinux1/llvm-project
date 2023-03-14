@@ -164,20 +164,19 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       mlir::PatternRewriter &Rewriter) const {
     bool OutlinedCycle = false;
 
-    // Enqueue the successors. Note that if the successor is the elected
-    // entry, do not clone it, because it is correct to jump there. If the
-    // successor is outside of the current set region, do not clone it
-    // either, this path will be represented with `goto`s at the current
-    // stage.
-    std::function<bool(mlir::Block *)> Lambda = [Region,
-                                                 Entry](mlir::Block *Block) {
-      return Region.contains(Block) && Block != Entry;
-    };
-
     for (auto const &[Predecessor, LateEntry] : LateEntryPairs) {
       using GT = typename llvm::GraphTraits<mlir::Block *>;
       using StateType = typename revng::detail::DFSBackedgeState<mlir::Block *>;
-      StateType State(Lambda);
+
+      //  Enqueue the successors. Note that if the successor is the elected
+      // entry, do not clone it, because it is correct to jump there. If the
+      // successor is outside of the current set region, do not clone it
+      // either, this path will be represented with `goto`s at the current
+      // stage.
+      StateType State([&Region, Entry](const mlir::Block *Block) {
+        return Region.contains(Block) && Block != Entry;
+      });
+
       BlockSet IterationOutlinedNodes;
       IRMapping CloneMapping;
       IRMapping LateEntryOnlyMapping;
