@@ -156,7 +156,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return UpdatedOperand;
   }
 
-  // Returns true if during this iteration we outlined a loop construct.
+  // Returns true if during this iteration we outline a loop construct.
   bool outlineFirstIteration(
       llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
           &LateEntryPairs,
@@ -164,45 +164,67 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       mlir::PatternRewriter &Rewriter) const {
     bool OutlinedCycle = false;
 
-    // For each abnormal entry found, clone the node target of the abnormal
-    // entry, and attach it to the previous predecessor.
-    IRMapping CloneMapping;
-    while (not LateEntryPairs.empty()) {
-      auto const &[Predecessor, LateEntry] = LateEntryPairs.back();
-      LateEntryPairs.pop_back();
+    // Enqueue the successors. Note that if the successor is the elected
+    // entry, do not clone it, because it is correct to jump there. If the
+    // successor is outside of the current set region, do not clone it
+    // either, this path will be represented with `goto`s at the current
+    // stage.
+    std::function<bool(mlir::Block *)> Lambda = [Region,
+                                                 Entry](mlir::Block *Block) {
+      return Region.contains(Block) && Block != Entry;
+    };
 
-      // I have to manually perform the cloning of the internal of the block
-      // body.
-      IRMapping Mapping;
-      mlir::Block *LateEntryClone = Rewriter.createBlock(LateEntry);
-      Mapping.map(LateEntry, LateEntryClone);
-      CloneMapping.map(LateEntry, Predecessor);
+    for (auto const &[Predecessor, LateEntry] : LateEntryPairs) {
+      using GT = typename llvm::GraphTraits<mlir::Block *>;
+      using StateType = typename revng::detail::DFSBackedgeState<mlir::Block *>;
+      StateType State(Lambda);
+      BlockSet IterationOutlinedNodes;
+      IRMapping CloneMapping;
 
-      // Add the outlined nodes to the set that we will return.
-      OutlinedNodes.insert(LateEntryClone);
+      using odf_iterator = llvm::df_iterator<mlir::Block *, StateType, true>;
+      auto Begin = odf_iterator::begin(LateEntry, State);
+      auto End = odf_iterator::end(LateEntry, State);
 
-      for (auto &BlockOp : *LateEntry) {
-        Operation *Clone = Rewriter.clone(BlockOp, Mapping);
-        Mapping.map(BlockOp.getResults(), Clone->getResults());
-      }
+      for (mlir::Block *Block : llvm::make_range(Begin, End)) {
 
-      // Remap block successors that have been already clone on the respective
-      // clone (Otherwise we could end up in outlining loops).
-      OutlinedCycle |= updateTerminatorOperands(LateEntryClone, CloneMapping);
+        // Manual cloning of the block body.
+        IRMapping Mapping;
+        mlir::Block *BlockClone = Rewriter.createBlock(Block);
+        Mapping.map(Block, BlockClone);
+        CloneMapping.map(Block, BlockClone);
 
-      // In the predecessor point to the new cloned block.
-      updateTerminatorOperands(Predecessor, Mapping);
+        // Add the outlined nodes to the set that we will return.
+        OutlinedNodes.insert(BlockClone);
 
-      // Enqueue the successors. Note that if the successor is the elected
-      // entry, do not clone it, because it is correct to jump there. If the
-      // successor is outside of the current set region, do not clone it
-      // either, this path will be represented with `goto`s at the current
-      // stage.
-      for (mlir::Block *Successor : LateEntryClone->getSuccessors()) {
-        if (setContains(Region, Successor) && Successor != Entry) {
-          LateEntryPairs.push_back({LateEntryClone, Successor});
+        // Add the outlined nodes to a set to update the terminators.
+        IterationOutlinedNodes.insert(BlockClone);
+
+        for (auto &BlockOp : *Block) {
+          Operation *Clone = Rewriter.clone(BlockOp, Mapping);
+          Mapping.map(BlockOp.getResults(), Clone->getResults());
+        }
+
+        // Remap block successors that have been already cloned on the
+        // respective clone (otherwise we could end up in outlining loops).
+        updateTerminatorOperands(BlockClone, CloneMapping);
+
+        // Detect a loop, and in case
+        for (mlir::Block *Successor :
+             llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
+          if (State.onStack(Successor)) {
+            OutlinedCycle |= true;
+          }
         }
       }
+
+      // Remap the terminator successors in order to point to the cloned nodes.
+      for (mlir::Block *BlockClone : IterationOutlinedNodes) {
+        updateTerminatorOperands(BlockClone, CloneMapping);
+      }
+
+      // Remap the terminator of the predecessor node to point to the outlined
+      // iteration.
+      updateTerminatorOperands(Predecessor, CloneMapping);
     }
 
     return OutlinedCycle;
