@@ -538,18 +538,28 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   void updateParentWithCliftLoop(BlockSet &Region,
                                  revng::detail::ParentTree<mlir::Block *> &Pt,
                                  clift::LoopOp CliftLoop) const {
-    // Update in the parent region the status of the nodes.
-    if (Pt.hasParent(Region)) {
+
+    // We recursively update the parent regions until we reach the roo one.
+    // TODO: this is a temporary hack, `ParentTree` new design should handle
+    //       this for us.
+    BlockSet *ParentRegion = &Pt.getParent(Region);
+    while (ParentRegion != nullptr) {
 
       // Insert in the parent region the block containing the `clift.loop`.
-      BlockSet &ParentRegion = Pt.getParent(Region);
       mlir::Block *LoopParentBlock = CliftLoop->getBlock();
-      ParentRegion.insert(LoopParentBlock);
+      ParentRegion->insert(LoopParentBlock);
 
       // Remove from the parent region all the blocks that now constitute
       // the body of the `clift.loop`.
       for (mlir::Block *B : Region) {
-        ParentRegion.erase(B);
+        ParentRegion->erase(B);
+      }
+
+      // Retrieve the parent region, if any.
+      if (Pt.hasParent(*ParentRegion)) {
+        ParentRegion = &Pt.getParent(*ParentRegion);
+      } else {
+        ParentRegion = nullptr;
       }
     }
   }
