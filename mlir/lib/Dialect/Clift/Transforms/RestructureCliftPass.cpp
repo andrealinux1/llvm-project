@@ -570,6 +570,13 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // the body of the `clift.loop`.
       for (mlir::Block *B : Region) {
         ParentRegion->erase(B);
+
+        // If one of the blocks that are now encapsulated inside the
+        // `clift.loop` was the entry node for a parent region, we need to
+        // substitute the entry with the block containing the `clift.loop`.
+        if (Pt.getRegionEntry(*ParentRegion) == B) {
+          Pt.setRegionEntry(*ParentRegion, LoopParentBlock);
+        }
       }
 
       // Retrieve the parent region, if any.
