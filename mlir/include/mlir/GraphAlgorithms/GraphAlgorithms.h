@@ -669,27 +669,23 @@ auto predecessor_range(GraphT Block) {
   return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-          typename NodeRef = typename GT::NodeRef>
+template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getPredecessorNodePairs(NodeRef Node) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> PredecessorNodePairs;
-  for (NodeRef Predecessor :
-       llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+  for (NodeRef Predecessor : predecessor_range(Node)) {
     PredecessorNodePairs.push_back({Predecessor, Node});
   }
 
   return PredecessorNodePairs;
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-          typename NodeRef = typename GT::NodeRef>
+template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getLoopPredecessorNodePairs(NodeRef Node,
                             llvm::SmallPtrSetImpl<NodeRef> &Region) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> LoopPredecessorNodePairs;
-  for (NodeRef Predecessor :
-       llvm::make_range(GT::child_begin(Node), GT::child_end(Node))) {
+  for (NodeRef Predecessor : predecessor_range(Node)) {
     if (not setContains(Region, Predecessor)) {
       LoopPredecessorNodePairs.push_back({Predecessor, Node});
     }
@@ -698,13 +694,11 @@ getLoopPredecessorNodePairs(NodeRef Node,
   return LoopPredecessorNodePairs;
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-          typename NodeRef = typename GT::NodeRef>
+template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
-  for (NodeRef Predecessor :
-       llvm::make_range(GT::child_begin(Entry), GT::child_end(Entry))) {
+  for (NodeRef Predecessor : predecessor_range(Entry)) {
     if (setContains(Region, Predecessor)) {
       ContinueNodePairs.push_back({Predecessor, Entry});
     }
