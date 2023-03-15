@@ -538,8 +538,22 @@ bool setContains(llvm::SmallPtrSetImpl<NodeT> &Set, NodeT &Element) {
   return Set.contains(Element);
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-          typename NodeRef = typename GT::NodeRef>
+template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
+auto child_range(GraphT Block) {
+  return llvm::make_range(GT::child_begin(Block), GT::child_end(Block));
+}
+
+template <class GraphT>
+auto successor_range(GraphT Block) {
+  return child_range(Block);
+}
+
+template <class GraphT>
+auto predecessor_range(GraphT Block) {
+  return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
+}
+
+template <class NodeRef>
 llvm::DenseMap<NodeRef, size_t>
 getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
 
@@ -550,8 +564,7 @@ getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   // We can iterate over all the predecessors of a block, if we find a pred not
   // in the current set, we increment the counter of the entry edges.
   for (NodeRef Block : Region) {
-    for (NodeRef Predecessor :
-         llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
+    for (NodeRef Predecessor : predecessor_range(Block)) {
       if (not setContains(Region, Predecessor)) {
         Result[Block]++;
       }
@@ -609,8 +622,7 @@ NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
   return Entry;
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
-          typename NodeRef = typename GT::NodeRef>
+template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
                    llvm::SmallPtrSetImpl<NodeRef> &Region, NodeRef Entry) {
@@ -618,8 +630,7 @@ getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
   for (const auto &[Other, NumIncoming] : EntryCandidates) {
     if (Other != Entry) {
       llvm::SmallVector<NodeRef> OutsidePredecessor;
-      for (NodeRef Predecessor :
-           llvm::make_range(GT::child_begin(Other), GT::child_end(Other))) {
+      for (NodeRef Predecessor : predecessor_range(Other)) {
         if (not setContains(Region, Predecessor)) {
           OutsidePredecessor.push_back(Predecessor);
           LateEntryPairs.push_back({Predecessor, Other});
@@ -632,8 +643,7 @@ getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
   return LateEntryPairs;
 }
 
-template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
-          typename NodeRef = typename GT::NodeRef>
+template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
 
@@ -643,8 +653,7 @@ getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   // We iterate over all the successors of a block, if we find a successor not
   // in the current set, we add the pairs of node to the set.
   for (NodeRef Block : Region) {
-    for (NodeRef Successor :
-         llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
+    for (NodeRef Successor : successor_range(Block)) {
       if (not setContains(Region, Successor)) {
         ExitSuccessorPairs.push_back({Block, Successor});
       }
@@ -652,21 +661,6 @@ getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   }
 
   return ExitSuccessorPairs;
-}
-
-template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
-auto child_range(GraphT Block) {
-  return llvm::make_range(GT::child_begin(Block), GT::child_end(Block));
-}
-
-template <class GraphT>
-auto successor_range(GraphT Block) {
-  return child_range(Block);
-}
-
-template <class GraphT>
-auto predecessor_range(GraphT Block) {
-  return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
 }
 
 template <class NodeRef>
