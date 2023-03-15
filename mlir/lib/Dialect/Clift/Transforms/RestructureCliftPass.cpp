@@ -433,6 +433,17 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     Rewriter.setInsertionPointToEnd(EmptyBlock);
     auto Loc = UnknownLoc::get(getContext());
     Rewriter.create<LLVM::BrOp>(Loc, Entry);
+
+    // Additional check that the predecessor of each block now living inside
+    // the `clift.loop`, is also in the same region.
+    using GT = llvm::GraphTraits<llvm::Inverse<mlir::Block *>>;
+    for (mlir::Block &CliftLoopBlock : LoopRegion) {
+      for (mlir::Block *Predecessor :
+           llvm::make_range(GT::child_begin(&CliftLoopBlock),
+                            GT::child_end(&CliftLoopBlock))) {
+        assert(Predecessor->getParent() == &LoopRegion);
+      }
+    }
   }
 
   void generateCliftGotoSuccessors(BlockSet &Region,
@@ -476,6 +487,18 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // statements, so that we can later restore the edge on the control
       // flow graph in the parent region.
       CliftLoopSuccessors.insert(Successor);
+    }
+
+    // Additional check that all the successors of each block now living inside
+    // the `clift.loop`, is also in the same region.
+    mlir::Region &LoopRegion = CliftLoop->getRegion(0);
+    using GT = llvm::GraphTraits<mlir::Block *>;
+    for (mlir::Block &CliftLoopBlock : LoopRegion) {
+      for (mlir::Block *Successor :
+           llvm::make_range(GT::child_begin(&CliftLoopBlock),
+                            GT::child_end(&CliftLoopBlock))) {
+        assert(Successor->getParent() == &LoopRegion);
+      }
     }
   }
 
