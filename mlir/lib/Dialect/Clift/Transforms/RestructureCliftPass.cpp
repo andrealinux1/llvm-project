@@ -436,11 +436,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
     // Additional check that the predecessor of each block now living inside
     // the `clift.loop`, is also in the same region.
-    using GT = llvm::GraphTraits<llvm::Inverse<mlir::Block *>>;
     for (mlir::Block &CliftLoopBlock : LoopRegion) {
-      for (mlir::Block *Predecessor :
-           llvm::make_range(GT::child_begin(&CliftLoopBlock),
-                            GT::child_end(&CliftLoopBlock))) {
+      for (mlir::Block *Predecessor : predecessor_range(&CliftLoopBlock)) {
         assert(Predecessor->getParent() == &LoopRegion);
       }
     }
@@ -454,6 +451,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // Handle the outgoing edges from the region.
     llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
         ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
+    mlir::Region &LoopRegion = CliftLoop->getRegion(0);
 
     for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
 
@@ -471,7 +469,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
       // We need create a new basic block which will contain the `goto`
       // statement, and then subsistute the branch to that block.
-      mlir::Block *GotoBlock = Rewriter.createBlock(&CliftLoop->getRegion(0));
+      mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
 
       // Create the `goto` in the new trampoline block.
       Rewriter.setInsertionPointToStart(GotoBlock);
@@ -491,12 +489,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
     // Additional check that all the successors of each block now living inside
     // the `clift.loop`, is also in the same region.
-    mlir::Region &LoopRegion = CliftLoop->getRegion(0);
-    using GT = llvm::GraphTraits<mlir::Block *>;
     for (mlir::Block &CliftLoopBlock : LoopRegion) {
-      for (mlir::Block *Successor :
-           llvm::make_range(GT::child_begin(&CliftLoopBlock),
-                            GT::child_end(&CliftLoopBlock))) {
+      for (mlir::Block *Successor : successor_range(&CliftLoopBlock)) {
         assert(Successor->getParent() == &LoopRegion);
       }
     }

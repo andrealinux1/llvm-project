@@ -654,6 +654,21 @@ getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
   return ExitSuccessorPairs;
 }
 
+template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
+auto child_range(GraphT Block) {
+  return llvm::make_range(GT::child_begin(Block), GT::child_end(Block));
+}
+
+template <class GraphT>
+auto successor_range(GraphT Block) {
+  return child_range(Block);
+}
+
+template <class GraphT>
+auto predecessor_range(GraphT Block) {
+  return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
+}
+
 template <class GraphT, class GT = llvm::GraphTraits<llvm::Inverse<GraphT>>,
           typename NodeRef = typename GT::NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
