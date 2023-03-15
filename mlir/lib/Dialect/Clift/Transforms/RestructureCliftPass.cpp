@@ -361,8 +361,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         // Outline the first iteration of the cycles.
         BlockSet OutlinedNodes;
-        OutlinedCycle = outlineFirstIteration(LateEntryPairs, Region,
-                                              OutlinedNodes, Entry, Rewriter);
+        OutlinedCycle |= outlineFirstIteration(LateEntryPairs, Region,
+                                               OutlinedNodes, Entry, Rewriter);
 
         // Update the parent regions to reflect the newly added nodes.
         updateParent(Pt, Region, OutlinedNodes);
