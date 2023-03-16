@@ -363,15 +363,18 @@ private:
 public:
   using succ_iterator = links_iterator;
 
-  static auto FilterIdNodes = [](NodeRef &Node) {
-    return std::holds_alternative<size_t>(Node);
-  };
   links_range getSuccessors() {
-    return llvm::make_filter_range(Nodes, FilterIdNodes);
+    return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
+      return std::holds_alternative<size_t>(Node);
+    });
   }
 
   succ_iterator succ_begin() { return getSuccessors().begin(); }
   succ_iterator succ_end() { return getSuccessors().end(); }
+
+  void insertBlock(NodeT Node) {
+    Nodes.push_back(Node);
+  }
 };
 
 // TODO: double check how to implement the variant with the fact that we want to
@@ -391,6 +394,8 @@ private:
   links_container Regions;
 
 public:
+  RegionTree() = default;
+
   void insertRegion(RegionVector &Region) {
     Regions.emplace_black(std::move(Region));
   }

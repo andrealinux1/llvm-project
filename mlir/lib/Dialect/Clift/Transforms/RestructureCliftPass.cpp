@@ -313,6 +313,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       llvm::dbgs() << "\nAfter ordering:\n";
       printRegions(Pt.getRegions());
 
+      // New Impl. starting here.
       // Compute the Reverse Post Order.
       llvm::SmallVector<mlir::Block *> RPOT;
       using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
@@ -322,9 +323,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
           computeDistanceFromEntry(&FunctionRegion);
 
+      // The following routine pre-computes the entry block of each region.
       size_t RegionIndex = 0;
       for (BlockSet &Region : Pt.regions()) {
-        llvm::dbgs() << "\nRestructuring region idx: " << RegionIndex << ":\n";
         llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
             getEntryCandidates<mlir::Block *>(Region);
 
@@ -339,37 +340,99 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           EntryCandidates.insert({RPOT.front(), 0});
         }
 
-        llvm::dbgs() << "\nEntry candidates:\n";
-        printMap(EntryCandidates);
-
         mlir::Block *Entry = electEntry<mlir::Block *>(
             EntryCandidates, ShortestPathFromEntry, RPOT);
         Pt.setRegionEntry(Region, Entry);
-        llvm::dbgs() << "\nElected entry:\n";
-        Entry->printAsOperand(llvm::dbgs());
-        llvm::dbgs() << "\n";
-
-        // Now that elected the entry node we can prooced with the inlining.
-        // Extract for each non-elected entry, the inlining path.
-        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-            LateEntryPairs = getOutlinedEntries<mlir::Block *>(EntryCandidates,
-                                                               Region, Entry);
-
-        // Print all the outside predecessor.
-        llvm::dbgs() << "\nNon regular entry candidates found:\n";
-        printPairVector(LateEntryPairs);
-
-        // Outline the first iteration of the cycles.
-        BlockSet OutlinedNodes;
-        OutlinedCycle |= outlineFirstIteration(LateEntryPairs, Region,
-                                               OutlinedNodes, Entry, Rewriter);
-
-        // Update the parent regions to reflect the newly added nodes.
-        updateParent(Pt, Region, OutlinedNodes);
-
-        // Increment region index for next iteration.
-        RegionIndex++;
       }
+
+      // Transpile the already ordered regions into a ParentTree.
+      revng::detail::RegionTree<mlir::Block *> RT;
+
+      RegionIndex = 0;
+      std::map<BlockSet *, size_t> RegionIDMap;
+      for (BlockSet &Region : Pt.regions()) {
+
+        // Populate the map containing the correspondance between region and
+        // index.
+        RegionIDMap[&Region] = RegionIndex;
+
+        // Create the `RegionNode` object.
+        revng::detail::RegionNode<mlir::Block *> RegionNode;
+
+        // Insert in the `RegionNode` the entry at first, and then the other
+        // nodes.
+        mlir::Block *Entry = Pt.getRegionEntry(Region);
+        RegionNode.insertBlock(Entry);
+        for (mlir::Block *B : Region) {
+          if (B != Entry) {
+            RegionNode.insertBlock(B);
+          }
+        }
+      }
+
+      /*
+            // Compute the Reverse Post Order.
+            llvm::SmallVector<mlir::Block *> RPOT;
+            using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region
+         *>; llvm::copy(RPOTraversal(&FunctionRegion),
+         std::back_inserter(RPOT));
+
+            // Compute the distance of each node from the entry node.
+            llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
+                computeDistanceFromEntry(&FunctionRegion);
+
+            size_t RegionIndex = 0;
+            for (BlockSet &Region : Pt.regions()) {
+              llvm::dbgs() << "\nRestructuring region idx: " << RegionIndex <<
+         ":\n"; llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+                  getEntryCandidates<mlir::Block *>(Region);
+
+              // In case we are analyzing the root region, we expect to have no
+         entry
+              // candidates.
+              bool RootRegionIteration = (RegionIndex + 1) == Regions.size();
+              Pt.setRegionRoot(Region, RootRegionIteration);
+              assert(!EntryCandidates.empty() || RootRegionIteration);
+              assert(!RootRegionIteration || EntryCandidates.empty());
+              if (RootRegionIteration) {
+                assert(EntryCandidates.empty());
+                EntryCandidates.insert({RPOT.front(), 0});
+              }
+
+              llvm::dbgs() << "\nEntry candidates:\n";
+              printMap(EntryCandidates);
+
+              mlir::Block *Entry = electEntry<mlir::Block *>(
+                  EntryCandidates, ShortestPathFromEntry, RPOT);
+              Pt.setRegionEntry(Region, Entry);
+              llvm::dbgs() << "\nElected entry:\n";
+              Entry->printAsOperand(llvm::dbgs());
+              llvm::dbgs() << "\n";
+
+              // Now that elected the entry node we can prooced with the
+         inlining.
+              // Extract for each non-elected entry, the inlining path.
+              llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+                  LateEntryPairs = getOutlinedEntries<mlir::Block
+         *>(EntryCandidates, Region, Entry);
+
+              // Print all the outside predecessor.
+              llvm::dbgs() << "\nNon regular entry candidates found:\n";
+              printPairVector(LateEntryPairs);
+
+              // Outline the first iteration of the cycles.
+              BlockSet OutlinedNodes;
+              OutlinedCycle |= outlineFirstIteration(LateEntryPairs, Region,
+                                                     OutlinedNodes, Entry,
+         Rewriter);
+
+              // Update the parent regions to reflect the newly added nodes.
+              updateParent(Pt, Region, OutlinedNodes);
+
+              // Increment region index for next iteration.
+              RegionIndex++;
+            }
+      */
     }
   }
 
