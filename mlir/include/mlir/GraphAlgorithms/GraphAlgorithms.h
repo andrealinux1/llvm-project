@@ -346,6 +346,63 @@ void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &Rs) {
 }
 
 namespace revng::detail {
+
+template <class NodeT>
+class RegionNode {
+  using NodeRef = std::variant<NodeT, size_t>;
+
+  using links_container = llvm::SmallVector<NodeRef>;
+  using links_iterator = typename links_container::iterator;
+  using links_const_iterator = typename links_container::const_iterator;
+  using links_range = llvm::iterator_range<links_iterator>;
+  using links_const_range = llvm::iterator_range<links_const_iterator>;
+
+private:
+  links_container Nodes;
+
+public:
+  using succ_iterator = links_iterator;
+
+  static auto FilterIdNodes = [](NodeRef &Node) {
+    return std::holds_alternative<size_t>(Node);
+  };
+  links_range getSuccessors() {
+    return llvm::make_filter_range(Nodes, FilterIdNodes);
+  }
+
+  succ_iterator succ_begin() { return getSuccessors().begin(); }
+  succ_iterator succ_end() { return getSuccessors().end(); }
+};
+
+// TODO: double check how to implement the variant with the fact that we want to
+// accept a template argument for the node type, but have an index at the same
+// time.
+template <class NodeT>
+class RegionTree {
+  using RegionVector = RegionNode<NodeT>;
+
+  using links_container = llvm::SmallVector<RegionVector>;
+  using links_iterator = typename links_container::iterator;
+  using links_const_iterator = typename links_container::const_iterator;
+  using links_range = llvm::iterator_range<links_iterator>;
+  using links_const_range = llvm::iterator_range<links_const_iterator>;
+
+private:
+  links_container Regions;
+
+public:
+  void insertRegion(RegionVector &Region) {
+    Regions.emplace_black(std::move(Region));
+  }
+
+  links_iterator begin() { return Regions.begin(); }
+  links_const_iterator begin() const { return Regions.begin(); }
+  links_iterator end() { return Regions.end(); }
+  links_const_iterator end() const { return Regions.end(); }
+  links_range regions() { return llvm::make_range(begin(), end()); }
+  links_const_range regions() const { return llvm::make_range(begin(), end()); }
+};
+
 using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
 
 // TODO: this data structure will be responsible of handling the child/parent
