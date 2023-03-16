@@ -17,6 +17,8 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include "mlir/IR/BlockSupport.h"
+
 namespace revng::detail {
 
 template <class NodeT>
@@ -372,9 +374,7 @@ public:
   succ_iterator succ_begin() { return getSuccessors().begin(); }
   succ_iterator succ_end() { return getSuccessors().end(); }
 
-  void insertBlock(NodeT Node) {
-    Nodes.push_back(Node);
-  }
+  void insertBlock(NodeT Node) { Nodes.push_back(Node); }
 };
 
 // TODO: double check how to implement the variant with the fact that we want to
@@ -384,6 +384,7 @@ template <class NodeT>
 class RegionTree {
   using RegionVector = RegionNode<NodeT>;
 
+public:
   using links_container = llvm::SmallVector<RegionVector>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
@@ -566,6 +567,40 @@ public:
 };
 
 } // namespace revng::detail
+
+namespace llvm {
+template <>
+struct GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
+  using ChildIteratorType = revng::detail::RegionNode<mlir::Block *>::succ_iterator;
+  using Node = revng::detail::RegionNode<mlir::Block *>;
+  using NodeRef = Node *;
+
+  static NodeRef getEntryNode(NodeRef bb) { return bb; }
+
+  static ChildIteratorType child_begin(NodeRef node) {
+    return node->succ_begin();
+  }
+  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
+};
+
+template <>
+struct GraphTraits<revng::detail::RegionTree<mlir::Block *>> : public GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
+  using GraphType = revng::detail::RegionTree<mlir::Block *>;
+  using NodeRef = revng::detail::RegionNode<mlir::Block *> *;
+
+  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
+
+  //using nodes_iterator = pointer_iterator<mlir::Region::iterator>;
+  using nodes_iterator = revng::detail::RegionTree<mlir::Block *>::links_iterator;
+  static nodes_iterator nodes_begin(GraphType fn) {
+    return nodes_iterator(fn->begin());
+  }
+  static nodes_iterator nodes_end(GraphType fn) {
+    return nodes_iterator(fn->end());
+  }
+};
+
+} // namespace llvm
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
           typename NodeRef = typename GT::NodeRef>
