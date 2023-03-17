@@ -360,6 +360,11 @@ class RegionNode {
   using links_const_range = llvm::iterator_range<links_const_iterator>;
 
 private:
+  void erase(links_container &V, NodeRef Value) {
+    V.erase(std::remove(V.begin(), V.end(), Value), V.end());
+  }
+
+private:
   links_container Nodes;
 
 public:
@@ -375,6 +380,10 @@ public:
   succ_iterator succ_end() { return getSuccessors().end(); }
 
   void insertBlock(NodeT Node) { Nodes.push_back(Node); }
+  void insertID(size_t ID) { Nodes.push_back(ID); }
+
+  void eraseBlock(NodeT Node) { erase(Nodes, Node); }
+  void eraseID(size_t ID) { erase(Nodes, ID); }
 };
 
 // TODO: double check how to implement the variant with the fact that we want to
@@ -409,6 +418,8 @@ public:
   links_const_iterator end() const { return Regions.end(); }
   links_range regions() { return llvm::make_range(begin(), end()); }
   links_const_range regions() const { return llvm::make_range(begin(), end()); }
+
+  RegionVector &getRegion(size_t Index) { return Regions[Index]; }
 };
 
 using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
@@ -573,7 +584,8 @@ public:
 namespace llvm {
 template <>
 struct GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
-  using ChildIteratorType = revng::detail::RegionNode<mlir::Block *>::succ_iterator;
+  using ChildIteratorType =
+      revng::detail::RegionNode<mlir::Block *>::succ_iterator;
   using Node = revng::detail::RegionNode<mlir::Block *>;
   using NodeRef = Node *;
 
@@ -586,14 +598,15 @@ struct GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
 };
 
 template <>
-struct GraphTraits<revng::detail::RegionTree<mlir::Block *>> : public GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
+struct GraphTraits<revng::detail::RegionTree<mlir::Block *>>
+    : public GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
   using GraphType = revng::detail::RegionTree<mlir::Block *>;
   using NodeRef = revng::detail::RegionNode<mlir::Block *> *;
 
   static NodeRef getEntryNode(GraphType Rt) { return &Rt.front(); }
 
-  //using nodes_iterator = pointer_iterator<mlir::Region::iterator>;
-  using nodes_iterator = revng::detail::RegionTree<mlir::Block *>::links_iterator;
+  using nodes_iterator =
+      revng::detail::RegionTree<mlir::Block *>::links_iterator;
   static nodes_iterator nodes_begin(GraphType Rt) {
     return nodes_iterator(Rt.begin());
   }
