@@ -370,7 +370,6 @@ private:
   links_container Nodes;
 
 public:
-
   links_iterator begin() { return Nodes.begin(); }
   links_const_iterator begin() const { return Nodes.begin(); }
   links_iterator end() { return Nodes.end(); }
@@ -390,10 +389,25 @@ public:
   succ_iterator succ_end() { return getSuccessors().end(); }
 
   void insertBlock(NodeT Node) { Nodes.push_back(Node); }
-  void insertID(size_t ID) { Nodes.push_back(ID); }
+  void insertBlockEntry(NodeT Node) { Nodes.insert(begin(), Node); }
 
-  void eraseBlock(NodeT Node) { erase(Nodes, Node); }
-  void eraseID(size_t ID) { erase(Nodes, ID); }
+  void insertID(size_t ID) { Nodes.push_back(ID); }
+  void insertIDEntry(size_t ID) {Nodes.insert(begin(), ID); }
+
+  // If we are removing the first element (hardcoded entry), we signal it with
+  // the return code.
+  bool eraseBlock(NodeT Node) {
+    bool IsEntry = Nodes.front() == Node;
+    erase(Nodes, Node);
+    return IsEntry;
+  }
+
+  bool eraseID(size_t ID) {
+    bool IsEntry = Nodes.front() == ID;
+    erase(Nodes, ID);
+    return IsEntry;
+  }
+
 };
 
 // TODO: double check how to implement the variant with the fact that we want to
