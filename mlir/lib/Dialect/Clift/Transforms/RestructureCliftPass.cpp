@@ -343,6 +343,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         mlir::Block *Entry = electEntry<mlir::Block *>(
             EntryCandidates, ShortestPathFromEntry, RPOT);
         Pt.setRegionEntry(Region, Entry);
+        RegionIndex++;
       }
 
       // Transpile the already ordered regions into a ParentTree.
