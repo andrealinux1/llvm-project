@@ -363,10 +363,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         // Insert in the `RegionNode` the entry at first, and then the other
         // nodes.
         mlir::Block *Entry = Pt.getRegionEntry(Region);
-        RegionNode.insertBlock(Entry);
+        RegionNode.insertElementEntry(Entry);
         for (mlir::Block *B : Region) {
           if (B != Entry) {
-            RegionNode.insertBlock(B);
+            RegionNode.insertElement(B);
           }
         }
 
@@ -395,16 +395,16 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           // current region.
           bool IsEntry = false;
           for (mlir::Block *Block : Region) {
-            IsEntry = ParentRegion.eraseBlock(Block);
+            IsEntry = ParentRegion.eraseElement(Block);
           }
 
           // Insert in the `Parent` region the ID representing the current child
           // region.
           size_t CurrentIndex = RegionIDMap.at(&Region);
           if (IsEntry) {
-            ParentRegion.insertIDEntry(CurrentIndex);
+            ParentRegion.insertElementEntry(CurrentIndex);
           } else {
-            ParentRegion.insertID(CurrentIndex);
+            ParentRegion.insertElement(CurrentIndex);
           }
         }
       }
