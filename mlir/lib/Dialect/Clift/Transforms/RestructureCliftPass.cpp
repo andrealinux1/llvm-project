@@ -409,8 +409,25 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         }
       }
 
+      llvm::dbgs() << "\n RegionTree:\n";
+      RegionIndex = 0;
+      using RegionNode = revng::detail::RegionNode<mlir::Block *>;
       for (revng::detail::RegionNode<mlir::Block *> &Region :
            RegionTree.regions()) {
+        llvm::dbgs() << "Region idx: " << RegionIndex
+                     << " composed by nodes:\n";
+
+        for (RegionNode::NodeRef &Block : Region) {
+          if (std::holds_alternative<mlir::Block *>(Block)) {
+            mlir::Block *B = std::get<mlir::Block *>(Block);
+            B->printAsOperand(llvm::dbgs());
+            llvm::dbgs() << "\n";
+          } else if (std::holds_alternative<size_t>(Block)) {
+            size_t ID = std::get<size_t>(Block);
+            llvm::dbgs() << "Subregion ID: " << ID << "\n";
+          }
+        }
+        RegionIndex++;
       }
 
       /*
