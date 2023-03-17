@@ -349,6 +349,9 @@ void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &Rs) {
 
 namespace revng::detail {
 
+template<class NodeT>
+class RegionTree;
+
 template <class NodeT>
 class RegionNode {
 public:
@@ -368,8 +371,11 @@ private:
 
 private:
   links_container Nodes;
+  RegionTree<NodeT> &OwningRegionTree;
 
 public:
+  RegionNode(RegionTree<NodeT> &RegionTree) : OwningRegionTree(RegionTree) {}
+
   links_iterator begin() { return Nodes.begin(); }
   links_const_iterator begin() const { return Nodes.begin(); }
   links_iterator end() { return Nodes.end(); }

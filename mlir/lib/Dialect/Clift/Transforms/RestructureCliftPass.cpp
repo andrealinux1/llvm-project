@@ -358,7 +358,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionIDMap[&Region] = RegionIndex;
 
         // Create the `RegionNode` object.
-        revng::detail::RegionNode<mlir::Block *> RegionNode;
+        revng::detail::RegionNode<mlir::Block *> RegionNode(RegionTree);
 
         // Insert in the `RegionNode` the entry at first, and then the other
         // nodes.
