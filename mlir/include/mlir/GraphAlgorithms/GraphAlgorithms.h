@@ -366,9 +366,9 @@ public:
   using succ_iterator = links_iterator;
 
   links_range getSuccessors() {
-    return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
+    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node) {
       return std::holds_alternative<size_t>(Node);
-    });
+    }));
   }
 
   succ_iterator succ_begin() { return getSuccessors().begin(); }
@@ -400,6 +400,8 @@ public:
   void insertRegion(RegionVector &Region) {
     Regions.emplace_black(std::move(Region));
   }
+
+  RegionVector &front() { return Regions.front(); }
 
   links_iterator begin() { return Regions.begin(); }
   links_const_iterator begin() const { return Regions.begin(); }
@@ -588,15 +590,15 @@ struct GraphTraits<revng::detail::RegionTree<mlir::Block *>> : public GraphTrait
   using GraphType = revng::detail::RegionTree<mlir::Block *>;
   using NodeRef = revng::detail::RegionNode<mlir::Block *> *;
 
-  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
+  static NodeRef getEntryNode(GraphType Rt) { return &Rt.front(); }
 
   //using nodes_iterator = pointer_iterator<mlir::Region::iterator>;
   using nodes_iterator = revng::detail::RegionTree<mlir::Block *>::links_iterator;
-  static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn->begin());
+  static nodes_iterator nodes_begin(GraphType Rt) {
+    return nodes_iterator(Rt.begin());
   }
-  static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn->end());
+  static nodes_iterator nodes_end(GraphType Rt) {
+    return nodes_iterator(Rt.end());
   }
 };
 
