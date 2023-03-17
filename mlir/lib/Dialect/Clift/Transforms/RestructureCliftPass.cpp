@@ -347,7 +347,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       }
 
       // Transpile the already ordered regions into a ParentTree.
-      revng::detail::RegionTree<mlir::Block *> RT;
+      revng::detail::RegionTree<mlir::Block *> RegionTree;
 
       RegionIndex = 0;
       std::map<BlockSet *, size_t> RegionIDMap;
@@ -369,6 +369,13 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
             RegionNode.insertBlock(B);
           }
         }
+
+        // Insert the `RegionNode` in the `RegionTree` object.
+        RegionTree.insertRegion(std::move(RegionNode));
+      }
+
+      for (revng::detail::RegionNode<mlir::Block *> &Region :
+           RegionTree.regions()) {
       }
 
       /*

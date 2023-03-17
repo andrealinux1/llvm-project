@@ -397,8 +397,8 @@ private:
 public:
   RegionTree() = default;
 
-  void insertRegion(RegionVector &Region) {
-    Regions.emplace_black(std::move(Region));
+  void insertRegion(RegionVector &&Region) {
+    Regions.emplace_back(std::move(Region));
   }
 
   RegionVector &front() { return Regions.front(); }
