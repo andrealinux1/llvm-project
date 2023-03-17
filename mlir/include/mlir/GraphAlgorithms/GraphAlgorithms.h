@@ -351,8 +351,10 @@ namespace revng::detail {
 
 template <class NodeT>
 class RegionNode {
+public:
   using NodeRef = std::variant<NodeT, size_t>;
 
+private:
   using links_container = llvm::SmallVector<NodeRef>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
@@ -368,6 +370,14 @@ private:
   links_container Nodes;
 
 public:
+
+  links_iterator begin() { return Nodes.begin(); }
+  links_const_iterator begin() const { return Nodes.begin(); }
+  links_iterator end() { return Nodes.end(); }
+  links_const_iterator end() const { return Nodes.end(); }
+  links_range regions() { return llvm::make_range(begin(), end()); }
+  links_const_range regions() const { return llvm::make_range(begin(), end()); }
+
   using succ_iterator = links_iterator;
 
   links_range getSuccessors() {
