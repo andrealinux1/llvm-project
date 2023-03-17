@@ -374,6 +374,35 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionTree.insertRegion(std::move(RegionNode));
       }
 
+      // Cycling through the original regions, and exploiting the `ParentMap`
+      // relationship we substitute in the regions the nodes by the index
+      // representing the nested region.s
+      for (BlockSet &Region : Pt.regions()) {
+
+        // Check that the region we are analyzing actually has a `Parent`.
+        if (Pt.hasParent(Region)) {
+
+          // We obtain the ID of the `Parent` region, exploting the map data
+          // structure that we kept for this purpose.
+          size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
+
+          // We obtain the `Parent` region from the `ParentTree` data structure.
+          revng::detail::RegionNode<mlir::Block *> &ParentRegion =
+              RegionTree.getRegion(ParentIndex);
+
+          // Remove from the `Parent` region all the blocks that belong to the
+          // current region.
+          for (mlir::Block *Block : Region) {
+            ParentRegion.eraseBlock(Block);
+          }
+
+          // Insert in the `Parent` region the ID representing the current child
+          // region.
+          size_t CurrentIndex = RegionIDMap.at(&Region);
+          ParentRegion.insertID(CurrentIndex);
+        }
+      }
+
       for (revng::detail::RegionNode<mlir::Block *> &Region :
            RegionTree.regions()) {
       }
