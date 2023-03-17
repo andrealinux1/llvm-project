@@ -372,6 +372,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         // Insert the `RegionNode` in the `RegionTree` object.
         RegionTree.insertRegion(std::move(RegionNode));
+        RegionIndex++;
       }
 
       // Cycling through the original regions, and exploiting the `ParentMap`
@@ -392,14 +393,19 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
           // Remove from the `Parent` region all the blocks that belong to the
           // current region.
+          bool IsEntry = false;
           for (mlir::Block *Block : Region) {
-            ParentRegion.eraseBlock(Block);
+            IsEntry = ParentRegion.eraseBlock(Block);
           }
 
           // Insert in the `Parent` region the ID representing the current child
           // region.
           size_t CurrentIndex = RegionIDMap.at(&Region);
-          ParentRegion.insertID(CurrentIndex);
+          if (IsEntry) {
+            ParentRegion.insertIDEntry(CurrentIndex);
+          } else {
+            ParentRegion.insertID(CurrentIndex);
+          }
         }
       }
 
