@@ -604,35 +604,35 @@ public:
 
 namespace llvm {
 template <>
-struct GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
+struct GraphTraits<revng::detail::RegionNode<mlir::Block *> *> {
   using ChildIteratorType =
       revng::detail::RegionNode<mlir::Block *>::succ_iterator;
   using Node = revng::detail::RegionNode<mlir::Block *>;
   using NodeRef = Node *;
 
-  static NodeRef getEntryNode(NodeRef bb) { return bb; }
+  static NodeRef getEntryNode(NodeRef BB) { return BB; }
 
-  static ChildIteratorType child_begin(NodeRef node) {
-    return node->succ_begin();
+  static ChildIteratorType child_begin(NodeRef Node) {
+    return Node->succ_begin();
   }
-  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
+  static ChildIteratorType child_end(NodeRef Node) { return Node->succ_end(); }
 };
 
 template <>
-struct GraphTraits<revng::detail::RegionTree<mlir::Block *>>
-    : public GraphTraits<revng::detail::RegionNode<mlir::Block *>> {
-  using GraphType = revng::detail::RegionTree<mlir::Block *>;
+struct GraphTraits<revng::detail::RegionTree<mlir::Block *> *>
+    : public GraphTraits<revng::detail::RegionNode<mlir::Block *> *> {
+  using GraphType = revng::detail::RegionTree<mlir::Block *> *;
   using NodeRef = revng::detail::RegionNode<mlir::Block *> *;
 
-  static NodeRef getEntryNode(GraphType Rt) { return &Rt.front(); }
+  static NodeRef getEntryNode(GraphType Rt) { return &Rt->front(); }
 
   using nodes_iterator =
       revng::detail::RegionTree<mlir::Block *>::links_iterator;
   static nodes_iterator nodes_begin(GraphType Rt) {
-    return nodes_iterator(Rt.begin());
+    return nodes_iterator(Rt->begin());
   }
   static nodes_iterator nodes_end(GraphType Rt) {
-    return nodes_iterator(Rt.end());
+    return nodes_iterator(Rt->end());
   }
 };
 
