@@ -61,6 +61,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using BlockIntMap = llvm::DenseMap<mlir::Block *, size_t>;
   using BlockVect = llvm::SmallVector<mlir::Block *>;
 
+  using RegionNode = revng::detail::RegionNode<mlir::Block *>;
+  using RegionTree = revng::detail::RegionTree<mlir::Block *>;
+
   using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
   mlir::LogicalResult
   matchAndRewrite(LLVM::LLVMFuncOp Op,
@@ -143,14 +146,12 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void
-  printRegionTree(revng::detail::RegionTree<mlir::Block *> &RegionTree) const {
-    for (revng::detail::RegionNode<mlir::Block *> &Region :
-         RegionTree.regions()) {
-      llvm::dbgs() << "\n RegionTree:\n";
+  void printRegionTree(RegionTree &RegionTree) const {
+    for (RegionNode &Region : RegionTree.regions()) {
+      llvm::dbgs() << "\nRegionTree:\n";
       size_t RegionIndex = 0;
       llvm::dbgs() << "Region idx: " << RegionIndex << " composed by nodes:\n";
-      for (revng::detail::RegionNode<mlir::Block *>::NodeRef &Block : Region) {
+      for (RegionNode::NodeRef &Block : Region) {
         if (std::holds_alternative<mlir::Block *>(Block)) {
           mlir::Block *B = std::get<mlir::Block *>(Block);
           B->printAsOperand(llvm::dbgs());
@@ -368,7 +369,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       }
 
       // Transpile the already ordered regions into a ParentTree.
-      revng::detail::RegionTree<mlir::Block *> RegionTree;
+      RegionTree RegionTree;
 
       RegionIndex = 0;
       std::map<BlockSet *, size_t> RegionIDMap;
@@ -379,7 +380,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionIDMap[&Region] = RegionIndex;
 
         // Create the `RegionNode` object.
-        revng::detail::RegionNode<mlir::Block *> RegionNode(RegionTree);
+        RegionNode RegionNode(RegionTree);
 
         // Insert in the `RegionNode` the entry at first, and then the other
         // nodes.
@@ -409,8 +410,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
 
           // We obtain the `Parent` region from the `ParentTree` data structure.
-          revng::detail::RegionNode<mlir::Block *> &ParentRegion =
-              RegionTree.getRegion(ParentIndex);
+          RegionNode &ParentRegion = RegionTree.getRegion(ParentIndex);
 
           // Remove from the `Parent` region all the blocks that belong to the
           // current region.
