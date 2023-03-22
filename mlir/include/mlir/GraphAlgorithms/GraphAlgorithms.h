@@ -367,23 +367,38 @@ private:
 
   RegionTree<NodeT> &OwningRegionTree;
 
+  // static RegionTree<NodeT> &GlobalRegionTree;
+
   using getRegionPointerT = RegionNode *(*)(NodeRef &);
   using getConstRegionPointerT = const RegionNode *(*)(const NodeRef &);
 
   /*
-  static RegionNode *getRegionPointer(NodeRef &Successor) {
-    assert(std::holds_alternative<size_t>(Successor));
-    size_t SuccessorIndex = std::get<size_t>(Successor);
-    return &OwningRegionTree.getRegion(SuccessorIndex);
-  }
+    static RegionNode *getRegionPointer(NodeRef &Successor) {
+      assert(std::holds_alternative<size_t>(Successor));
+      size_t SuccessorIndex = std::get<size_t>(Successor);
+      return &GlobalRegionTree.getRegion(SuccessorIndex);
+    }
 
-  static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
+    static_assert(std::is_same_v<decltype(&getRegionPointer),
+    getRegionPointerT>);
   */
 
 private:
   void erase(links_container &V, NodeRef Value) {
     V.erase(std::remove(V.begin(), V.end(), Value), V.end());
   }
+
+  /*
+  struct getRegionPointer {
+    using result_type = RegionNode *;
+
+    result_type operator()(NodeRef *P) const {
+      assert(std::holds_alternative<size_t>(*P));
+      size_t SuccessorIndex = std::get<size_t>(*P);
+      return &GlobalRegionTree.getRegion(SuccessorIndex);
+    }
+  };
+  */
 
 private:
   links_container Nodes;
@@ -399,29 +414,43 @@ public:
   links_const_range regions() const { return llvm::make_range(begin(), end()); }
 
   /*
-    using succ_iterator =
-        llvm::mapped_iterator<links_iterator, getRegionPointerT>;
-    using succ_const_iterator =
-        llvm::mapped_iterator<links_const_iterator, getConstRegionPointerT>;
+  using succ_iterator =
+      llvm::mapped_iterator<links_iterator, getRegionPointerT>;
+  using succ_const_iterator =
+      llvm::mapped_iterator<links_const_iterator, getConstRegionPointerT>;
   */
 
   // static RegionTree<NodeT> *GlobalRegionTree;
   // using succ_iterator = links_iterator;
 
+  /*
   using succ_iterator = typename llvm::SmallVector<RegionNode *>::iterator;
   using succ_range = typename llvm::iterator_range<succ_iterator>;
 
   links_range getSuccessorsIndex() {
-    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<size_t>(Node);
+    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node)
+  { return std::holds_alternative<size_t>(Node);
     }));
   }
 
   links_const_range getSuccessorsIndex() const {
-    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<size_t>(Node);
+    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node)
+  { return std::holds_alternative<size_t>(Node);
     }));
   }
+  */
+
+  /*
+    succ_iterator succ_begin() {
+      return llvm::map_iterator(getSuccessorsIndex().begin(),
+    getRegionPointer());
+    }
+
+    succ_iterator succ_end() {
+      return llvm::map_iterator(getSuccessorsIndex().end(),
+    getRegionPointer());
+    }
+  */
 
   /*
   links_range getSuccessors() {
@@ -431,12 +460,11 @@ public:
   }
   */
 
+  /*
   succ_range getSuccessors() {
-    /*
-    llvm::to_vector(llvm::map_range(getSuccessorsIndex(), [&](size_t &Index) {
-      return OwningRegionTree.getRegion(Index);
+    llvm::to_vector(llvm::map_range(getSuccessorsIndex(), [&](size_t &Index)
+  { return OwningRegionTree.getRegion(Index);
     }));
-    */
 
     llvm::SmallVector<RegionNode *> SuccessorsRegions;
     for (auto SuccessorIndex : getSuccessorsIndex()) {
@@ -446,21 +474,23 @@ public:
           &(OwningRegionTree.getRegion(SuccessorIndexSizeT)));
     }
 
-    return llvm::to_vector(
-        llvm::make_range(SuccessorsRegions.begin(), SuccessorsRegions.end()));
+    return llvm::make_range(SuccessorsRegions.begin(),
+  SuccessorsRegions.end());
   }
 
   succ_iterator succ_begin() { return getSuccessors().begin(); }
   succ_iterator succ_end() { return getSuccessors().end(); }
+  */
 
   /*
-    succ_iterator succ_begin() {
-      return llvm::map_iterator(getSuccessorsIndex().begin(), getRegionPointer);
-    }
+  succ_iterator succ_begin() {
+    return llvm::map_iterator(getSuccessorsIndex().begin(),
+  getRegionPointer);
+  }
 
-    succ_iterator succ_end() {
-      return llvm::map_iterator(getSuccessorsIndex().end(), getRegionPointer);
-    }
+  succ_iterator succ_end() {
+    return llvm::map_iterator(getSuccessorsIndex().end(), getRegionPointer);
+  }
   */
 
   /*
