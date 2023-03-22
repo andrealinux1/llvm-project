@@ -437,6 +437,14 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Output as debug the `RegionTree` structure.
       printRegionTree(RegionTree);
 
+      // Instantiate a df visit using the `GraphTraits` on the `RegionNode`.
+      auto Begin = llvm::df_begin(&(RegionTree.getRegion(1)));
+      auto End = llvm::df_end(&(RegionTree.getRegion(1)));
+      for (auto &RegionNode : llvm::make_range(Begin, End)) {
+        llvm::dbgs() << "\n";
+        printRegionNode(*RegionNode);
+      }
+
       /*
             // Compute the Reverse Post Order.
             llvm::SmallVector<mlir::Block *> RPOT;
