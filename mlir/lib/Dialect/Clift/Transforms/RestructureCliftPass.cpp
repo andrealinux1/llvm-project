@@ -413,11 +413,13 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           // structure that we kept for this purpose.
           size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
 
-          // We obtain the `Parent` region from the `ParentTree` data structure.
+          // We obtain the `Parent` region from the `RegionTree` data structure.
           RegionNode &ParentRegion = RegionTree.getRegion(ParentIndex);
 
           // Remove from the `Parent` region all the blocks that belong to the
-          // current region.
+          // current region. If we happen to remove the entry block from a
+          // region, the subsequent insertion of the `RegionIndex` will become
+          // the entry of the region.
           bool IsEntry = false;
           for (mlir::Block *Block : Region) {
             IsEntry = ParentRegion.eraseElement(Block);
@@ -438,9 +440,20 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       printRegionTree(RegionTree);
 
       // Instantiate a df visit using the `GraphTraits` on the `RegionNode`.
-      auto Begin = llvm::df_begin(&(RegionTree.getRegion(1)));
-      auto End = llvm::df_end(&(RegionTree.getRegion(1)));
-      for (auto &RegionNode : llvm::make_range(Begin, End)) {
+      auto Df_Begin = llvm::df_begin(&(RegionTree.getRegion(0)));
+      auto Df_End = llvm::df_end(&(RegionTree.getRegion(0)));
+      for (auto &RegionNode : llvm::make_range(Df_Begin, Df_End)) {
+        llvm::dbgs() << "\n";
+        printRegionNode(*RegionNode);
+      }
+
+      // Instantiate a postorder visit on the `RegionTree` in order to perform
+      // the first iteration outlining.
+      // We start the visit from the last node in the `RegionTree`, which is
+      // always the `root` region.
+      auto Po_Begin = llvm::po_begin(&*(RegionTree.rbegin()));
+      auto Po_End = llvm::po_end(&*(RegionTree.rbegin()));
+      for (auto &RegionNode : llvm::make_range(Po_Begin, Po_End)) {
         llvm::dbgs() << "\n";
         printRegionNode(*RegionNode);
       }
