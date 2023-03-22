@@ -525,8 +525,14 @@ public:
   using links_container = llvm::SmallVector<RegionVector>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
+  using links_reverse_iterator = typename links_container::reverse_iterator;
+  using links_const_reverse_iterator =
+      typename links_container::const_reverse_iterator;
   using links_range = llvm::iterator_range<links_iterator>;
+  using links_reverse_range = llvm::iterator_range<links_reverse_iterator>;
   using links_const_range = llvm::iterator_range<links_const_iterator>;
+  using links_const_reverse_range =
+      llvm::iterator_range<links_const_reverse_iterator>;
 
 private:
   links_container Regions;
@@ -546,6 +552,17 @@ public:
   links_const_iterator end() const { return Regions.end(); }
   links_range regions() { return llvm::make_range(begin(), end()); }
   links_const_range regions() const { return llvm::make_range(begin(), end()); }
+
+  links_reverse_iterator rbegin() { return Regions.rbegin(); }
+  links_const_reverse_iterator rbegin() const { return Regions.rbegin(); }
+  links_reverse_iterator rend() { return Regions.rend(); }
+  links_const_reverse_iterator rend() const { return Regions.rend(); }
+  links_reverse_range reverse_regions() {
+    return llvm::make_range(rbegin(), rend());
+  }
+  links_const_reverse_range reverse_regions() const {
+    return llvm::make_range(rbegin(), rend());
+  }
 
   RegionVector &getRegion(size_t Index) { return Regions[Index]; }
 };
