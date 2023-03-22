@@ -146,23 +146,27 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void printRegionTree(RegionTree &RegionTree) const {
-    for (RegionNode &Region : RegionTree.regions()) {
-      llvm::dbgs() << "\nRegionTree:\n";
-      size_t RegionIndex = 0;
-      llvm::dbgs() << "Region idx: " << RegionIndex << " composed by nodes:\n";
-      for (RegionNode::NodeRef &Block : Region) {
-        if (std::holds_alternative<mlir::Block *>(Block)) {
-          mlir::Block *B = std::get<mlir::Block *>(Block);
-          B->printAsOperand(llvm::dbgs());
-          llvm::dbgs() << "\n";
-        } else if (std::holds_alternative<size_t>(Block)) {
-          size_t ID = std::get<size_t>(Block);
-          llvm::dbgs() << "Subregion ID: " << ID;
-        }
-        RegionIndex++;
+  void printRegionNode(RegionNode &RegionNode) const {
+    for (RegionNode::NodeRef &Block : RegionNode) {
+      if (std::holds_alternative<mlir::Block *>(Block)) {
+        mlir::Block *B = std::get<mlir::Block *>(Block);
+        B->printAsOperand(llvm::dbgs());
+        llvm::dbgs() << "\n";
+      } else if (std::holds_alternative<size_t>(Block)) {
+        size_t ID = std::get<size_t>(Block);
+        llvm::dbgs() << "Subregion ID: " << ID;
       }
     }
+  }
+
+  void printRegionTree(RegionTree &RegionTree) const {
+    llvm::dbgs() << "\nRegionTree:\n";
+    size_t RegionIndex = 0;
+    for (RegionNode &RegionNode : RegionTree.regions()) {
+      llvm::dbgs() << "Region idx: " << RegionIndex << " composed by nodes:\n";
+      printRegionNode(RegionNode);
+    }
+    RegionIndex++;
   }
 
   bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping) const {
@@ -430,6 +434,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         }
       }
 
+      // Output as debug the `RegionTree` structure.
       printRegionTree(RegionTree);
 
       /*
