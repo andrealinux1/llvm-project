@@ -358,6 +358,10 @@ class RegionNode {
 public:
   using NodeRef = std::variant<NodeT, size_t>;
 
+  using succ_container = llvm::SmallVector<RegionNode *>;
+  using succ_iterator = typename succ_container::iterator;
+  using succ_range = llvm::iterator_range<succ_iterator>;
+
 private:
   using links_container = llvm::SmallVector<NodeRef>;
   using links_iterator = typename links_container::iterator;
@@ -402,6 +406,7 @@ private:
 
 private:
   links_container Nodes;
+  succ_container Children;
 
 public:
   RegionNode(RegionTree<NodeT> &RegionTree) : OwningRegionTree(RegionTree) {}
@@ -412,6 +417,9 @@ public:
   links_const_iterator end() const { return Nodes.end(); }
   links_range regions() { return llvm::make_range(begin(), end()); }
   links_const_range regions() const { return llvm::make_range(begin(), end()); }
+
+  succ_iterator succ_begin() { return Children.begin(); }
+  succ_iterator succ_end() { return Children.end(); }
 
   /*
   using succ_iterator =
@@ -532,8 +540,25 @@ public:
   */
 
   // Insert helpers.
-  void insertElement(NodeRef Element) { Nodes.push_back(Element); }
-  void insertElementEntry(NodeRef Element) { Nodes.insert(begin(), Element); }
+  void insertChildRegion(NodeRef Element) {
+    assert(std::holds_alternative<size_t>(Element));
+    size_t RegionIndex = std::get<size_t>(Element);
+    RegionNode *ChildRegion = &OwningRegionTree.getRegion(RegionIndex);
+    Children.push_back(ChildRegion);
+  }
+
+  void insertElement(NodeRef Element) {
+    Nodes.push_back(Element);
+    if (std::holds_alternative<size_t>(Element)) {
+      insertChildRegion(Element);
+    }
+  }
+  void insertElementEntry(NodeRef Element) {
+    Nodes.insert(begin(), Element);
+    if (std::holds_alternative<size_t>(Element)) {
+      insertChildRegion(Element);
+    }
+  }
 
   // If we are removing the first element (hardcoded entry), we signal it with
   // the return code.
