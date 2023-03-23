@@ -458,6 +458,41 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         printRegionNode(*RegionNode);
       }
 
+      for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
+
+        // We now perform the first iteration outlining procedure. The
+        // outlining is morally performed by the parent region for its
+        // children regions.
+        for (RegionNode *ChildRegion : Region->successor_range()) {
+
+          BlockSet NodesSet = ChildRegion->getBlocksSet();
+          mlir::Block *Entry = ChildRegion->getEntryBlock();
+
+          llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+              getEntryCandidates<mlir::Block *>(NodesSet);
+
+          llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+              LateEntryPairs = getOutlinedEntries<mlir::Block *>(
+                  EntryCandidates, NodesSet, Entry);
+
+          // Print all the outside predecessor.
+          llvm::dbgs() << "\nNon regular entry candidates found:\n";
+          printPairVector(LateEntryPairs);
+
+          // Outline the first iteration of the cycles.
+          BlockSet OutlinedNodes;
+          OutlinedCycle |= outlineFirstIteration(
+              LateEntryPairs, NodesSet, OutlinedNodes, Entry, Rewriter);
+
+          // The outlined nodes must be added to the parent region with respect
+          // to the one they were extracted form, that is the region we are
+          // iterating onto.
+          for (mlir::Block *OutlinedBlock : OutlinedNodes) {
+            Region->insertElement(OutlinedBlock);
+          }
+        }
+      }
+
       /*
             // Compute the Reverse Post Order.
             llvm::SmallVector<mlir::Block *> RPOT;
