@@ -577,10 +577,19 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       updateTerminatorOperands(Predecessor, EntryMapping);
     }
 
+    // Collect the successors of the current `clift.loop`.
+    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+        ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
+    llvm::SmallVector<mlir::Block *> CliftLoopSuccessors;
+    for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
+      CliftLoopSuccessors.push_back(Successor);
+    }
+
     // Create a new `clift.loop` operation.
     Rewriter.setInsertionPointToStart(LoopParentBlock);
     auto Loc = UnknownLoc::get(getContext());
-    clift::LoopOp CliftLoop = Rewriter.create<clift::LoopOp>(Loc);
+    clift::LoopOp CliftLoop =
+        Rewriter.create<clift::LoopOp>(Loc, CliftLoopSuccessors);
     return CliftLoop;
   }
 
@@ -671,36 +680,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       for (mlir::Block *Successor : successor_range(&CliftLoopBlock)) {
         assert(Successor->getParent() == &LoopRegion);
       }
-    }
-  }
-
-  void generateCliftLoopSuccessors(clift::LoopOp CliftLoop,
-                                   BlockSet &CliftLoopSuccessors,
-                                   mlir::PatternRewriter &Rewriter) const {
-    // In the `clift.loop` parent block we insert a switch statement
-    // preserving the control flow between `clift.goto` label destinations.
-    Rewriter.setInsertionPointAfter(CliftLoop);
-
-    auto Loc = UnknownLoc::get(getContext());
-
-    if (CliftLoopSuccessors.size() == 0) {
-
-      // Even if we don't have any edge exiting from the `clift.loop`, we need
-      // to manually place a `UnreachableInst` after the `clift.loop`.
-      Rewriter.create<LLVM::UnreachableOp>(Loc);
-    } else if (CliftLoopSuccessors.size() == 1) {
-      mlir::Block *FirstSuccessor = *CliftLoopSuccessors.begin();
-      Rewriter.create<LLVM::BrOp>(Loc, FirstSuccessor);
-    } else if (CliftLoopSuccessors.size() == 2) {
-      mlir::Value ConstantValue =
-          Rewriter.create<LLVM::ConstantOp>(Loc, Rewriter.getBoolAttr(false));
-      mlir::Block *FirstSuccessor = *CliftLoopSuccessors.begin();
-      mlir::Block *SecondSuccessor = *std::next(CliftLoopSuccessors.begin());
-      Rewriter.create<LLVM::CondBrOp>(Loc, ConstantValue, FirstSuccessor,
-                                      SecondSuccessor);
-    } else {
-      // TODO: implement this with a `LLVM::SwitchOp` operation.
-      assert(false);
     }
   }
 
@@ -813,8 +792,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         BlockSet CliftLoopSuccessors;
         generateCliftGotoSuccessors(NodesSet, CliftLoopSuccessors,
                                     FunctionRegion, Rewriter, CliftLoop);
-
-        generateCliftLoopSuccessors(CliftLoop, CliftLoopSuccessors, Rewriter);
 
         generateCliftContinue(NodesSet, Entry, Rewriter, CliftLoop);
 
