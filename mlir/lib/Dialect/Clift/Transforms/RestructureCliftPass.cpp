@@ -42,6 +42,7 @@
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
 namespace mlir {
@@ -551,8 +552,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  clift::LoopOp generateCliftLoop(BlockSet &Region, mlir::Block *Entry,
-                                  mlir::PatternRewriter &Rewriter) const {
+  clift::LoopOp
+  generateCliftLoop(BlockSet &Region, mlir::Block *Entry,
+                    llvm::SmallVector<mlir::Block *> &CliftLoopSuccessors,
+                    mlir::PatternRewriter &Rewriter) const {
     // Obtain the parent region of the function we are restructuring.
     mlir::Region *ParentRegion = nullptr;
     for (mlir::Block *B : Region) {
@@ -575,14 +578,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
       assert(EntryCandidate == Entry);
       updateTerminatorOperands(Predecessor, EntryMapping);
-    }
-
-    // Collect the successors of the current `clift.loop`.
-    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-        ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
-    llvm::SmallVector<mlir::Block *> CliftLoopSuccessors;
-    for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
-      CliftLoopSuccessors.push_back(Successor);
     }
 
     // Create a new `clift.loop` operation.
@@ -630,14 +625,12 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void generateCliftGotoSuccessors(BlockSet &Region,
-                                   BlockSet &CliftLoopSuccessors,
-                                   mlir::Region &FunctionRegion,
-                                   mlir::PatternRewriter &Rewriter,
-                                   clift::LoopOp CliftLoop) const {
+  void generateCliftGotoSuccessors(
+      BlockSet &Region, mlir::Region &FunctionRegion,
+      llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+          &ExitSuccessorsPairs,
+      mlir::PatternRewriter &Rewriter, clift::LoopOp CliftLoop) const {
     // Handle the outgoing edges from the region.
-    llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-        ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(Region);
     mlir::Region &LoopRegion = CliftLoop->getRegion(0);
 
     for (const auto &[Exit, Successor] : ExitSuccessorsPairs) {
@@ -667,11 +660,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       IRMapping GotoMapping;
       GotoMapping.map(Successor, GotoBlock);
       updateTerminatorOperands(Exit, GotoMapping);
-
-      // Accumulate all the successors reached through the `clift.goto`
-      // statements, so that we can later restore the edge on the control
-      // flow graph in the parent region.
-      CliftLoopSuccessors.insert(Successor);
     }
 
     // Additional check that all the successors of each block now living inside
@@ -785,13 +773,20 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         BlockSet NodesSet = ChildRegion->getBlocksSet();
         mlir::Block *Entry = ChildRegion->getEntryBlock();
 
-        clift::LoopOp CliftLoop = generateCliftLoop(NodesSet, Entry, Rewriter);
+        // Precompute the edges exiting from the region.
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+            ExitSuccessorsPairs = getExitNodePairs<mlir::Block *>(NodesSet);
+        llvm::SmallVector<mlir::Block *> CliftLoopSuccessors(
+            llvm::make_second_range(ExitSuccessorsPairs));
+
+        // Perform the `clift.loop` transformations.
+        clift::LoopOp CliftLoop =
+            generateCliftLoop(NodesSet, Entry, CliftLoopSuccessors, Rewriter);
 
         populateCliftLoopBody(CliftLoop, NodesSet, Entry, Rewriter);
 
-        BlockSet CliftLoopSuccessors;
-        generateCliftGotoSuccessors(NodesSet, CliftLoopSuccessors,
-                                    FunctionRegion, Rewriter, CliftLoop);
+        generateCliftGotoSuccessors(NodesSet, FunctionRegion,
+                                    ExitSuccessorsPairs, Rewriter, CliftLoop);
 
         generateCliftContinue(NodesSet, Entry, Rewriter, CliftLoop);
 
