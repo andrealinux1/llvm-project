@@ -61,6 +61,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using BlockIntMap = llvm::DenseMap<mlir::Block *, size_t>;
   using BlockVect = llvm::SmallVector<mlir::Block *>;
 
+  using ParentTree = revng::detail::ParentTree<mlir::Block *>;
+
   using RegionNode = revng::detail::RegionNode<mlir::Block *>;
   using RegionTree = revng::detail::RegionTree<mlir::Block *>;
 
@@ -259,8 +261,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return OutlinedCycle;
   }
 
-  void updateParent(revng::detail::ParentTree<mlir::Block *> &Pt,
-                    BlockSet &Region, BlockSet &OutlinedNodes) const {
+  void updateParent(ParentTree &Pt, BlockSet &Region,
+                    BlockSet &OutlinedNodes) const {
 
     // Re-add all the nodes of the current region to the parent region.
     if (Pt.hasParent(Region)) {
@@ -276,9 +278,14 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void performRegionIdentification(
-      mlir::Region &FunctionRegion, mlir::PatternRewriter &Rewriter,
-      revng::detail::ParentTree<mlir::Block *> &Pt) const {
+  void performRegionIdentification(mlir::Region &FunctionRegion,
+                                   mlir::PatternRewriter &Rewriter,
+                                   RegionTree &Rt) const {
+
+    // TODO: Remove this `ParentTree`. It is now kept to simplify the transition
+    // from `ParentTree` to `RegionTree` usage.
+    ParentTree Pt;
+
     // Region identification and first iteration outlining in a fixed point
     // fashion, until first iteration outlining does not generate new cyclic
     // regions.
@@ -372,9 +379,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionIndex++;
       }
 
-      // Transpile the already ordered regions into a ParentTree.
-      RegionTree RegionTree;
-
+      // Transpile the already ordered regions into a `RegionTree`.
       RegionIndex = 0;
       std::map<BlockSet *, size_t> RegionIDMap;
       for (BlockSet &Region : Pt.regions()) {
@@ -384,7 +389,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionIDMap[&Region] = RegionIndex;
 
         // Create the `RegionNode` object.
-        RegionNode RegionNode(RegionTree);
+        RegionNode RegionNode(Rt);
 
         // Insert in the `RegionNode` the entry at first, and then the other
         // nodes.
@@ -397,7 +402,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         }
 
         // Insert the `RegionNode` in the `RegionTree` object.
-        RegionTree.insertRegion(std::move(RegionNode));
+        Rt.insertRegion(std::move(RegionNode));
         RegionIndex++;
       }
 
@@ -414,7 +419,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
 
           // We obtain the `Parent` region from the `RegionTree` data structure.
-          RegionNode &ParentRegion = RegionTree.getRegion(ParentIndex);
+          RegionNode &ParentRegion = Rt.getRegion(ParentIndex);
 
           // Remove from the `Parent` region all the blocks that belong to the
           // current region. If we happen to remove the entry block from a
@@ -437,14 +442,14 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       }
 
       // Output as debug the `RegionTree` structure.
-      printRegionTree(RegionTree);
+      printRegionTree(Rt);
 
       // Instantiate a postorder visit on the `RegionTree` in order to perform
       // the first iteration outlining.
       // We start the visit from the last node in the `RegionTree`, which is
       // always the `root` region.
-      auto Po_Begin = llvm::po_begin(&*(RegionTree.rbegin()));
-      auto Po_End = llvm::po_end(&*(RegionTree.rbegin()));
+      auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
+      auto Po_End = llvm::po_end(&*(Rt.rbegin()));
       for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
 
         // We now perform the first iteration outlining procedure. The
@@ -725,39 +730,19 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void updateParentWithCliftLoop(BlockSet &Region,
-                                 revng::detail::ParentTree<mlir::Block *> &Pt,
+  void updateParentWithCliftLoop(RegionNode *ParentRegion,
+                                 RegionNode *ChildRegion, RegionTree &Rt,
                                  clift::LoopOp CliftLoop) const {
 
-    // We recursively update the parent regions until we reach the roo one.
-    // TODO: this is a temporary hack, `ParentTree` new design should handle
-    //       this for us.
-    BlockSet *ParentRegion = &Pt.getParent(Region);
-    while (ParentRegion != nullptr) {
+    // We need to take care of the fact that, if the `ChildRegion` under
+    // analysis is the entry of the parent region, we need to insert the new
+    // block containing the `clift.loop` as entry.
+    mlir::Block *CliftLoopBlock = CliftLoop->getBlock();
 
-      // Insert in the parent region the block containing the `clift.loop`.
-      mlir::Block *LoopParentBlock = CliftLoop->getBlock();
-      ParentRegion->insert(LoopParentBlock);
-
-      // Remove from the parent region all the blocks that now constitute
-      // the body of the `clift.loop`.
-      for (mlir::Block *B : Region) {
-        ParentRegion->erase(B);
-
-        // If one of the blocks that are now encapsulated inside the
-        // `clift.loop` was the entry node for a parent region, we need to
-        // substitute the entry with the block containing the `clift.loop`.
-        if (Pt.getRegionEntry(*ParentRegion) == B) {
-          Pt.setRegionEntry(*ParentRegion, LoopParentBlock);
-        }
-      }
-
-      // Retrieve the parent region, if any.
-      if (Pt.hasParent(*ParentRegion)) {
-        ParentRegion = &Pt.getParent(*ParentRegion);
-      } else {
-        ParentRegion = nullptr;
-      }
+    if (ParentRegion->isChildRegionEntry(ChildRegion)) {
+      ParentRegion->insertElementEntry(CliftLoopBlock);
+    } else {
+      ParentRegion->insertElement(CliftLoopBlock);
     }
   }
 
@@ -806,53 +791,52 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void performCliftLoopGeneration(
-      mlir::Region &FunctionRegion, mlir::PatternRewriter &Rewriter,
-      revng::detail::ParentTree<mlir::Block *> &Pt) const {
+  void performCliftLoopGeneration(mlir::Region &FunctionRegion,
+                                  mlir::PatternRewriter &Rewriter,
+                                  RegionTree &Rt) const {
 
-    // Perform `clift.loop` generation.
-    size_t RegionIndex = 0;
-    for (BlockSet Region : Pt.regions()) {
-      if (Pt.isRegionRoot(Region) == true) {
-        continue;
+    // Perform the `clift.loop` generation, by instantiating a `post_order`
+    // visit over the `ParentTree`, and by generating the `clift.loop` for all
+    // the children of the `RegionNode` under visit.
+    auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
+    auto Po_End = llvm::po_end(&*(Rt.rbegin()));
+    for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
+
+      for (RegionNode *ChildRegion : Region->successor_range()) {
+        BlockSet NodesSet = ChildRegion->getBlocksSet();
+        mlir::Block *Entry = ChildRegion->getEntryBlock();
+
+        clift::LoopOp CliftLoop = generateCliftLoop(NodesSet, Entry, Rewriter);
+
+        populateCliftLoopBody(CliftLoop, NodesSet, Entry, Rewriter);
+
+        BlockSet CliftLoopSuccessors;
+        generateCliftGotoSuccessors(NodesSet, CliftLoopSuccessors,
+                                    FunctionRegion, Rewriter, CliftLoop);
+
+        generateCliftLoopSuccessors(CliftLoop, CliftLoopSuccessors, Rewriter);
+
+        generateCliftContinue(NodesSet, Entry, Rewriter, CliftLoop);
+
+        updateParentWithCliftLoop(Region, ChildRegion, Rt, CliftLoop);
+
+        generateCliftRetreating(Entry, Rewriter, CliftLoop);
       }
-
-      // Retrieve the elected entry block.
-      mlir::Block *Entry = Pt.getRegionEntry(Region);
-
-      clift::LoopOp CliftLoop = generateCliftLoop(Region, Entry, Rewriter);
-
-      populateCliftLoopBody(CliftLoop, Region, Entry, Rewriter);
-
-      BlockSet CliftLoopSuccessors;
-      generateCliftGotoSuccessors(Region, CliftLoopSuccessors, FunctionRegion,
-                                  Rewriter, CliftLoop);
-
-      generateCliftLoopSuccessors(CliftLoop, CliftLoopSuccessors, Rewriter);
-
-      generateCliftContinue(Region, Entry, Rewriter, CliftLoop);
-
-      updateParentWithCliftLoop(Region, Pt, CliftLoop);
-
-      generateCliftRetreating(Entry, Rewriter, CliftLoop);
-
-      // Increment region index for next iteration.
-      RegionIndex++;
     }
   }
 
   void performRestructureCliftRegion(mlir::Region &FunctionRegion,
                                      mlir::PatternRewriter &Rewriter) const {
 
-    // Declare the global `ParentTree` object which will contain the region
+    // Declare the global `RegionTree` object which will contain the regions
     // identified in the current function.
-    revng::detail::ParentTree<mlir::Block *> Pt;
+    RegionTree Rt;
 
     // Perform region identification.
-    performRegionIdentification(FunctionRegion, Rewriter, Pt);
+    performRegionIdentification(FunctionRegion, Rewriter, Rt);
 
     // Perform `clift.loop` generation.
-    performCliftLoopGeneration(FunctionRegion, Rewriter, Pt);
+    performCliftLoopGeneration(FunctionRegion, Rewriter, Rt);
   }
 };
 

@@ -438,7 +438,7 @@ public:
     for (NodeRef BlockNode : getBlocks()) {
 
       // Extract the `mlir::Block *` from the std::variant.
-      // assert(std::holds_alternative<NodeT>(BlockNode));
+      assert(std::holds_alternative<NodeT>(BlockNode));
       NodeT Block = std::get<NodeT>(BlockNode);
       Set.insert(Block);
     }
@@ -591,6 +591,13 @@ public:
     Children.push_back(ChildRegion);
   }
 
+  void insertChildRegionEntry(NodeRef Element) {
+    assert(std::holds_alternative<size_t>(Element));
+    size_t RegionIndex = std::get<size_t>(Element);
+    RegionNode *ChildRegion = &OwningRegionTree.getRegion(RegionIndex);
+    Children.insert(succ_begin(), ChildRegion);
+  }
+
   void insertElement(NodeRef Element) {
     Nodes.push_back(Element);
     if (std::holds_alternative<size_t>(Element)) {
@@ -600,7 +607,7 @@ public:
   void insertElementEntry(NodeRef Element) {
     Nodes.insert(begin(), Element);
     if (std::holds_alternative<size_t>(Element)) {
-      insertChildRegion(Element);
+      insertChildRegionEntry(Element);
     }
   }
 
@@ -610,6 +617,21 @@ public:
     bool IsEntry = Nodes.front() == Element;
     erase(Nodes, Element);
     return IsEntry;
+  }
+
+  bool isChildRegionEntry(RegionNode *ChildRegion) {
+
+    // The `ChildRegion` can be the entry, only if the entry block is indeed an
+    // index to a `ChildRegion`, and the first region in the `Children` vector
+    // is indeedthe passed one.
+    assert(!Nodes.empty());
+    if (std::holds_alternative<size_t>(Nodes[0])) {
+      assert(!Children.empty());
+      if (Children[0] == ChildRegion) {
+        return true;
+      }
+    }
+    return false;
   }
 };
 
