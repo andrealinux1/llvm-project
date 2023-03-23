@@ -13,11 +13,13 @@ class OneUseOfType<string op>
 class Clift_Op<string mnemonic, list<Trait> traits = []> :
     Op<Clift_Dialect, mnemonic, traits>;
 
-def Clift_LoopOp : Clift_Op<"loop"> {
+def Clift_LoopOp : Clift_Op<"loop", [Terminator]> {
   let regions = (region AnyRegion:$body);
+  let successors = (successor
+    VariadicSuccessor<AnySuccessor>:$LoopDestinations);
 
   let assemblyFormat = [{
-    $body attr-dict 
+    $body $LoopDestinations attr-dict
   }];
 }
 
@@ -29,7 +31,7 @@ def Clift_AssignLabelOp : Clift_Op<"assign_label"> {
   let arguments = (ins Arg<Clift_LabelType, "", [MemFree]>:$label);
 
   let assemblyFormat = [{
-    $label type($label) attr-dict 
+    $label type($label) attr-dict
   }];
 
   let hasCanonicalizeMethod = 1;
@@ -39,7 +41,7 @@ def Clift_GoToOp : Clift_Op<"goto", [Terminator]> {
   let arguments = (ins Arg<Clift_LabelType, "", [MemRead]>:$label);
 
   let assemblyFormat = [{
-    $label type($label) attr-dict 
+    $label type($label) attr-dict
   }];
 }
 
@@ -47,7 +49,7 @@ def Clift_MakeLabelOp : Clift_Op<"make_label", [OneUseOfType<"AssignLabelOp">] >
   let results = (outs Res<Clift_LabelType, "", [MemAlloc, MemWrite] >:$result);
 
   let assemblyFormat = [{
-    type($result) attr-dict 
+    type($result) attr-dict
   }];
   let hasVerifier = 1;
 
@@ -64,7 +66,7 @@ def Clift_ConstantOp: Clift_Op<"constant", [Pure]> {
   let results = (outs Clift_PrimitiveType:$result);
 
   let assemblyFormat = [{
-    $value type($result) attr-dict 
+    $value type($result) attr-dict
   }];
 
    let builders = [
@@ -89,7 +91,7 @@ Clift_Op<mnemonic, [Symbol, CallableOpInterface, AutomaticAllocationScope, Isola
   let regions = (region AnyRegion:$body);
 
   let assemblyFormat = [{
-    $sym_name $function_type $body attr-dict 
+    $sym_name $function_type $body attr-dict
   }];
 
     code extraBaseClassDeclaration = [{
@@ -99,7 +101,7 @@ Clift_Op<mnemonic, [Symbol, CallableOpInterface, AutomaticAllocationScope, Isola
 
         mlir::Region::BlockListType& getBlocks() {
             return getBody().getBlocks();
-        }   
+        }
 
         ArrayRef<Type> getCallableResults() {
             return getFunctionType().getResults();
@@ -117,7 +119,7 @@ Clift_Op<mnemonic, [Symbol, CallableOpInterface, AutomaticAllocationScope, Isola
         bool isDeclaration() {
             return getBody().empty();
         }
-    
+
         Block::args_iterator args_begin() {
             return getBody().front().args_begin();
         }
