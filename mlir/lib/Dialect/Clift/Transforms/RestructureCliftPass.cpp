@@ -439,25 +439,12 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Output as debug the `RegionTree` structure.
       printRegionTree(RegionTree);
 
-      // Instantiate a df visit using the `GraphTraits` on the `RegionNode`.
-      auto Df_Begin = llvm::df_begin(&(RegionTree.getRegion(0)));
-      auto Df_End = llvm::df_end(&(RegionTree.getRegion(0)));
-      for (auto &RegionNode : llvm::make_range(Df_Begin, Df_End)) {
-        llvm::dbgs() << "\n";
-        printRegionNode(*RegionNode);
-      }
-
       // Instantiate a postorder visit on the `RegionTree` in order to perform
       // the first iteration outlining.
       // We start the visit from the last node in the `RegionTree`, which is
       // always the `root` region.
       auto Po_Begin = llvm::po_begin(&*(RegionTree.rbegin()));
       auto Po_End = llvm::po_end(&*(RegionTree.rbegin()));
-      for (auto &RegionNode : llvm::make_range(Po_Begin, Po_End)) {
-        llvm::dbgs() << "\n";
-        printRegionNode(*RegionNode);
-      }
-
       for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
 
         // We now perform the first iteration outlining procedure. The
