@@ -427,31 +427,18 @@ public:
 
   bool hasChildren() { return !successor_range().empty(); }
 
-  links_range getBlocks() {
-    return llvm::to_vector(llvm::make_filter_range(Nodes, [](NodeRef &Node) {
+  auto getBlocks() {
+    return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
       return std::holds_alternative<NodeT>(Node);
-    }));
+    });
   }
 
-  llvm::SmallSet<NodeT, 4> getNodesSet() {
+  llvm::SmallSet<NodeT, 4> getBlocksSet() {
     llvm::SmallSet<NodeT, 4> Set;
     for (NodeRef BlockNode : getBlocks()) {
 
       // Extract the `mlir::Block *` from the std::variant.
       assert(std::holds_alternative<NodeT>(BlockNode));
-      NodeT Block = std::get<NodeT>(BlockNode);
-      Set.insert(Block);
-    }
-    return Set;
-  }
-
-  llvm::SmallSet<NodeT, 4> getBlocksSet() {
-    llvm::SmallSet<NodeT, 4> Set;
-    auto BlocksRange = llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<NodeT>(Node);
-    });
-
-    for (NodeRef BlockNode : BlocksRange) {
       NodeT Block = std::get<NodeT>(BlockNode);
       Set.insert(Block);
     }
