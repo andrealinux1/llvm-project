@@ -486,8 +486,9 @@ public:
     // index to a `ChildRegion`, and the first region in the `Children` vector
     // is indeedthe passed one.
     assert(!Nodes.empty());
-    if (std::holds_alternative<size_t>(Nodes[0])) {
-      if (&OwningRegionTree.getRegion(0) == ChildRegion) {
+    if (std::holds_alternative<RegionNodePointerPair>(Nodes[0])) {
+      size_t EntryRegionIndex = std::get<RegionNodePointerPair>(Nodes[0]).first;
+      if (&OwningRegionTree.getRegion(EntryRegionIndex) == ChildRegion) {
         return true;
       }
     }
