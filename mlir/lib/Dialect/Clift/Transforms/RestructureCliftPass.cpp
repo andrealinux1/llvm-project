@@ -451,6 +451,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // always the `root` region.
       auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
       auto Po_End = llvm::po_end(&*(Rt.rbegin()));
+      /*
       for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
 
         // We now perform the first iteration outlining procedure. The
@@ -485,6 +486,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           }
         }
       }
+      */
 
       /*
             // Compute the Reverse Post Order.
@@ -768,7 +770,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
     auto Po_End = llvm::po_end(&*(Rt.rbegin()));
     for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
-
       for (RegionNode *ChildRegion : Region->successor_range()) {
         BlockSet NodesSet = ChildRegion->getBlocksSet();
         mlir::Block *Entry = ChildRegion->getEntryBlock();
