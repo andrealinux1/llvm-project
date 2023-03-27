@@ -367,45 +367,43 @@ private:
 
   RegionTree<NodeT> &OwningRegionTree;
 
-  // static RegionTree<NodeT> &GlobalRegionTree;
-
   using getRegionPointerT = RegionNode *(*)(NodeRef &);
   using getConstRegionPointerT = const RegionNode *(*)(const NodeRef &);
 
-  /*
-    static RegionNode *getRegionPointer(NodeRef &Successor) {
-      assert(std::holds_alternative<size_t>(Successor));
-      size_t SuccessorIndex = std::get<size_t>(Successor);
-      return &GlobalRegionTree.getRegion(SuccessorIndex);
-    }
+  static RegionNode *getRegionPointer(NodeRef &Successor) {
+    assert(std::holds_alternative<size_t>(Successor));
+    size_t SuccessorIndex = std::get<size_t>(Successor);
+    // return &GlobalRegionTree.getRegion(SuccessorIndex);
+    return nullptr;
+  }
 
-    static_assert(std::is_same_v<decltype(&getRegionPointer),
-    getRegionPointerT>);
-  */
+  static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
+
+  static const RegionNode *getConstRegionPointer(const NodeRef &Successor) {
+    assert(std::holds_alternative<size_t>(Successor));
+    size_t SuccessorIndex = std::get<size_t>(Successor);
+    // return &GlobalRegionTree.getRegion(SuccessorIndex);
+    return nullptr;
+  }
+
+  static_assert(
+      std::is_same_v<decltype(&getConstRegionPointer), getConstRegionPointerT>);
 
 private:
   void erase(links_container &V, NodeRef Value) {
     V.erase(std::remove(V.begin(), V.end(), Value), V.end());
   }
 
-  /*
-  struct getRegionPointer {
-    using result_type = RegionNode *;
-
-    result_type operator()(NodeRef *P) const {
-      assert(std::holds_alternative<size_t>(*P));
-      size_t SuccessorIndex = std::get<size_t>(*P);
-      return &GlobalRegionTree.getRegion(SuccessorIndex);
-    }
-  };
-  */
-
 private:
   links_container Nodes;
-  succ_container Children;
 
 public:
   RegionNode(RegionTree<NodeT> &RegionTree) : OwningRegionTree(RegionTree) {}
+
+  RegionNode(const RegionNode &) = default;
+  RegionNode(RegionNode &&) = default;
+  RegionNode &operator=(const RegionNode &) = default;
+  RegionNode &operator=(RegionNode &&) = default;
 
   links_iterator begin() { return Nodes.begin(); }
   links_const_iterator begin() const { return Nodes.begin(); }
@@ -449,23 +447,19 @@ public:
     return llvm::map_iterator(getSuccessorsIndex().begin(), getRegionPointer);
   }
 
-/*
   auto succ_const_begin() const {
     return llvm::map_iterator(getSuccessorsIndex().begin(),
                               getConstRegionPointer);
   }
-*/
 
   auto succ_end() {
     return llvm::map_iterator(getSuccessorsIndex().end(), getRegionPointer);
   }
 
-/*
   auto succ_const_end() const {
     return llvm::map_iterator(getSuccessorsIndex().end(),
                               getConstRegionPointer);
   }
-*/
 
   auto successor_range() { return llvm::make_range(succ_begin(), succ_end()); }
 
