@@ -65,6 +65,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using ParentTree = revng::detail::ParentTree<mlir::Block *>;
 
   using RegionNode = revng::detail::RegionNode<mlir::Block *>;
+  using RegionNodePointerPair =
+      revng::detail::RegionNodePointerPair<mlir::Block *>;
   using RegionTree = revng::detail::RegionTree<mlir::Block *>;
 
   using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
@@ -155,9 +157,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         mlir::Block *B = std::get<mlir::Block *>(Block);
         B->printAsOperand(llvm::dbgs());
         llvm::dbgs() << "\n";
-      } else if (std::holds_alternative<size_t>(Block)) {
-        size_t ID = std::get<size_t>(Block);
-        llvm::dbgs() << "Subregion ID: " << ID;
+      } else if (std::holds_alternative<RegionNodePointerPair>(Block)) {
+        RegionNodePointerPair Pair = std::get<RegionNodePointerPair>(Block);
+        llvm::dbgs() << "Subregion ID: " << Pair.first;
       }
     }
   }
@@ -434,10 +436,12 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           // Insert in the `Parent` region the ID representing the current child
           // region.
           size_t CurrentIndex = RegionIDMap.at(&Region);
+          RegionNodePointerPair RegionNodePointerPair =
+              std::make_pair(CurrentIndex, &Rt);
           if (IsEntry) {
-            ParentRegion.insertElementEntry(CurrentIndex);
+            ParentRegion.insertElementEntry(RegionNodePointerPair);
           } else {
-            ParentRegion.insertElement(CurrentIndex);
+            ParentRegion.insertElement(RegionNodePointerPair);
           }
         }
       }
@@ -451,7 +455,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // always the `root` region.
       auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
       auto Po_End = llvm::po_end(&*(Rt.rbegin()));
-      /*
       for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
 
         // We now perform the first iteration outlining procedure. The
@@ -486,71 +489,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           }
         }
       }
-      */
-
-      /*
-            // Compute the Reverse Post Order.
-            llvm::SmallVector<mlir::Block *> RPOT;
-            using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region
-         *>; llvm::copy(RPOTraversal(&FunctionRegion),
-         std::back_inserter(RPOT));
-
-            // Compute the distance of each node from the entry node.
-            llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
-                computeDistanceFromEntry(&FunctionRegion);
-
-            size_t RegionIndex = 0;
-            for (BlockSet &Region : Pt.regions()) {
-              llvm::dbgs() << "\nRestructuring region idx: " << RegionIndex <<
-         ":\n"; llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
-                  getEntryCandidates<mlir::Block *>(Region);
-
-              // In case we are analyzing the root region, we expect to have no
-         entry
-              // candidates.
-              bool RootRegionIteration = (RegionIndex + 1) == Regions.size();
-              Pt.setRegionRoot(Region, RootRegionIteration);
-              assert(!EntryCandidates.empty() || RootRegionIteration);
-              assert(!RootRegionIteration || EntryCandidates.empty());
-              if (RootRegionIteration) {
-                assert(EntryCandidates.empty());
-                EntryCandidates.insert({RPOT.front(), 0});
-              }
-
-              llvm::dbgs() << "\nEntry candidates:\n";
-              printMap(EntryCandidates);
-
-              mlir::Block *Entry = electEntry<mlir::Block *>(
-                  EntryCandidates, ShortestPathFromEntry, RPOT);
-              Pt.setRegionEntry(Region, Entry);
-              llvm::dbgs() << "\nElected entry:\n";
-              Entry->printAsOperand(llvm::dbgs());
-              llvm::dbgs() << "\n";
-
-              // Now that elected the entry node we can prooced with the
-         inlining.
-              // Extract for each non-elected entry, the inlining path.
-              llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-                  LateEntryPairs = getOutlinedEntries<mlir::Block
-         *>(EntryCandidates, Region, Entry);
-
-              // Print all the outside predecessor.
-              llvm::dbgs() << "\nNon regular entry candidates found:\n";
-              printPairVector(LateEntryPairs);
-
-              // Outline the first iteration of the cycles.
-              BlockSet OutlinedNodes;
-              OutlinedCycle |= outlineFirstIteration(LateEntryPairs, Region,
-                                                     OutlinedNodes, Entry,
-         Rewriter);
-
-              // Update the parent regions to reflect the newly added nodes.
-              updateParent(Pt, Region, OutlinedNodes);
-
-              // Increment region index for next iteration.
-              RegionIndex++;
-            }
-      */
     }
   }
 

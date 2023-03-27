@@ -354,9 +354,13 @@ template <class NodeT>
 class RegionTree;
 
 template <class NodeT>
+using RegionNodePointerPair = std::pair<size_t, RegionTree<NodeT> *>;
+
+template <class NodeT>
 class RegionNode {
 public:
-  using NodeRef = std::variant<NodeT, size_t>;
+  using RegionNodePointerPair = RegionNodePointerPair<NodeT>;
+  using NodeRef = std::variant<NodeT, RegionNodePointerPair>;
 
 private:
   using links_container = llvm::SmallVector<NodeRef>;
@@ -371,19 +375,19 @@ private:
   using getConstRegionPointerT = const RegionNode *(*)(const NodeRef &);
 
   static RegionNode *getRegionPointer(NodeRef &Successor) {
-    assert(std::holds_alternative<size_t>(Successor));
-    size_t SuccessorIndex = std::get<size_t>(Successor);
-    // return &GlobalRegionTree.getRegion(SuccessorIndex);
-    return nullptr;
+    assert(std::holds_alternative<RegionNodePointerPair>(Successor));
+    RegionNodePointerPair SuccessorPair =
+        std::get<RegionNodePointerPair>(Successor);
+    return &SuccessorPair.second->getRegion(SuccessorPair.first);
   }
 
   static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
 
   static const RegionNode *getConstRegionPointer(const NodeRef &Successor) {
     assert(std::holds_alternative<size_t>(Successor));
-    size_t SuccessorIndex = std::get<size_t>(Successor);
-    // return &GlobalRegionTree.getRegion(SuccessorIndex);
-    return nullptr;
+    RegionNodePointerPair SuccessorPair =
+        std::get<RegionNodePointerPair>(Successor);
+    return &SuccessorPair.second->getRegion(SuccessorPair.first);
   }
 
   static_assert(
@@ -439,7 +443,7 @@ public:
 
   auto getSuccessorsIndex() {
     return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<size_t>(Node);
+      return std::holds_alternative<RegionNodePointerPair>(Node);
     });
   }
 
@@ -464,17 +468,9 @@ public:
   auto successor_range() { return llvm::make_range(succ_begin(), succ_end()); }
 
   // Insert helpers.
-  void insertElement(NodeRef Element) {
-    Nodes.push_back(Element);
-    if (std::holds_alternative<size_t>(Element)) {
-    }
-  }
+  void insertElement(NodeRef Element) { Nodes.push_back(Element); }
 
-  void insertElementEntry(NodeRef Element) {
-    Nodes.insert(begin(), Element);
-    if (std::holds_alternative<size_t>(Element)) {
-    }
-  }
+  void insertElementEntry(NodeRef Element) { Nodes.insert(begin(), Element); }
 
   // If we are removing the first element (hardcoded entry), we signal it with
   // the return code.
