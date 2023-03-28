@@ -453,9 +453,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // the first iteration outlining.
       // We start the visit from the last node in the `RegionTree`, which is
       // always the `root` region.
-      auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
-      auto Po_End = llvm::po_end(&*(Rt.rbegin()));
-      for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
+      for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
 
         // We now perform the first iteration outlining procedure. The
         // outlining is morally performed by the parent region for its
@@ -705,9 +703,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // Perform the `clift.loop` generation, by instantiating a `post_order`
     // visit over the `ParentTree`, and by generating the `clift.loop` for all
     // the children of the `RegionNode` under visit.
-    auto Po_Begin = llvm::po_begin(&*(Rt.rbegin()));
-    auto Po_End = llvm::po_end(&*(Rt.rbegin()));
-    for (RegionNode *Region : llvm::make_range(Po_Begin, Po_End)) {
+    for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
       for (RegionNode *ChildRegion : Region->successor_range()) {
         BlockSet NodesSet = ChildRegion->getBlocksSet();
         mlir::Block *Entry = ChildRegion->getEntryBlock();
