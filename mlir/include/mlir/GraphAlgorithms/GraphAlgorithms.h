@@ -362,32 +362,38 @@ public:
   using RegionNodePointerPair = RegionNodePointerPair<NodeT>;
   using NodeRef = std::variant<NodeT, RegionNodePointerPair>;
 
-private:
   using links_container = llvm::SmallVector<NodeRef>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
   using links_range = llvm::iterator_range<links_iterator>;
   using links_const_range = llvm::iterator_range<links_const_iterator>;
 
+private:
   RegionTree<NodeT> &OwningRegionTree;
 
   using getRegionPointerT = RegionNode *(*)(NodeRef &);
   using getConstRegionPointerT = const RegionNode *(*)(const NodeRef &);
 
   static RegionNode *getRegionPointer(NodeRef &Successor) {
-    assert(std::holds_alternative<RegionNodePointerPair>(Successor));
-    RegionNodePointerPair SuccessorPair =
-        std::get<RegionNodePointerPair>(Successor);
-    return &SuccessorPair.second->getRegion(SuccessorPair.first);
+    if (std::holds_alternative<RegionNodePointerPair>(Successor)) {
+      RegionNodePointerPair SuccessorPair =
+          std::get<RegionNodePointerPair>(Successor);
+      return &SuccessorPair.second->getRegion(SuccessorPair.first);
+    } else {
+      return nullptr;
+    }
   }
 
   static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
 
   static const RegionNode *getConstRegionPointer(const NodeRef &Successor) {
-    assert(std::holds_alternative<size_t>(Successor));
-    RegionNodePointerPair SuccessorPair =
-        std::get<RegionNodePointerPair>(Successor);
-    return &SuccessorPair.second->getRegion(SuccessorPair.first);
+    if (std::holds_alternative<size_t>(Successor)) {
+      RegionNodePointerPair SuccessorPair =
+          std::get<RegionNodePointerPair>(Successor);
+      return &SuccessorPair.second->getRegion(SuccessorPair.first);
+    } else {
+      return nullptr;
+    }
   }
 
   static_assert(
@@ -447,25 +453,51 @@ public:
     });
   }
 
-  auto succ_begin() {
-    return llvm::map_iterator(getSuccessorsIndex().begin(), getRegionPointer);
+  auto getSuccessorsPointers() {
+    llvm::SmallVector<RegionNode *> SuccessorsPointer;
+    for (auto Element : Nodes) {
+      if (std::holds_alternative<RegionNodePointerPair>(Element)) {
+        auto SuccessorPair = std::get<RegionNodePointerPair>(Element);
+        RegionNode *SuccessorPointer =
+            &SuccessorPair.second->getRegion(SuccessorPair.first);
+        SuccessorsPointer.push_back(SuccessorPointer);
+      }
+    }
+
+    return SuccessorsPointer;
   }
+
+  /*
+  auto succ_begin() {
+    return llvm::map_iterator(Nodes.begin(), getRegionPointer);
+  }
+  */
+
+  auto succ_begin() { return getSuccessorsPointers().begin(); }
 
   auto succ_const_begin() const {
-    return llvm::map_iterator(getSuccessorsIndex().begin(),
-                              getConstRegionPointer);
+    return llvm::map_iterator(Nodes.begin(), getConstRegionPointer);
   }
 
+  /*
+    auto succ_end() { return llvm::map_iterator(Nodes.end(), getRegionPointer);
+    }
+  */
+
   auto succ_end() {
-    return llvm::map_iterator(getSuccessorsIndex().end(), getRegionPointer);
+    return getSuccessorsPointers().end();
+    ;
   }
 
   auto succ_const_end() const {
-    return llvm::map_iterator(getSuccessorsIndex().end(),
-                              getConstRegionPointer);
+    return llvm::map_iterator(Nodes.end(), getConstRegionPointer);
   }
 
   auto successor_range() { return llvm::make_range(succ_begin(), succ_end()); }
+
+  auto successor_const_range() {
+    return llvm::make_range(succ_const_begin(), succ_const_end());
+  }
 
   // Insert helpers.
   void insertElement(NodeRef Element) { Nodes.push_back(Element); }
@@ -709,6 +741,36 @@ public:
 } // namespace revng::detail
 
 namespace llvm {
+
+// New trait on std::variant.
+template <>
+struct GraphTraits<revng::detail::RegionNode<mlir::Block *>::NodeRef *> {
+  using Node = revng::detail::RegionNode<mlir::Block *>::NodeRef *;
+  using NodeRef = Node *;
+
+  using RegionNodePointerPair =
+      revng::detail::RegionNodePointerPair<mlir::Block *>;
+  using RegionNode = revng::detail::RegionNode<mlir::Block *>;
+
+  using ChildIteratorType = RegionNode::links_iterator;
+
+  static NodeRef getEntryNode(NodeRef BB) { return BB; }
+
+  static ChildIteratorType child_begin(const NodeRef &Node) {
+    auto SuccessorPair = std::get<RegionNodePointerPair>(**Node);
+    RegionNode *PointedRegion =
+        &SuccessorPair.second->getRegion(SuccessorPair.first);
+    return PointedRegion->begin();
+  }
+
+  static ChildIteratorType child_end(const NodeRef &Node) {
+    auto SuccessorPair = std::get<RegionNodePointerPair>(**Node);
+    RegionNode *PointedRegion =
+        &SuccessorPair.second->getRegion(SuccessorPair.first);
+    return PointedRegion->end();
+  }
+};
+
 template <>
 struct GraphTraits<revng::detail::RegionNode<mlir::Block *> *> {
   using Node = revng::detail::RegionNode<mlir::Block *>;

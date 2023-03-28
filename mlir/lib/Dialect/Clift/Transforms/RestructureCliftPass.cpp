@@ -40,6 +40,7 @@
 #include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/FilteredGraphTraits.h"
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
@@ -68,6 +69,24 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using RegionNodePointerPair =
       revng::detail::RegionNodePointerPair<mlir::Block *>;
   using RegionTree = revng::detail::RegionTree<mlir::Block *>;
+
+  /// Select only not 'nullptr` nodes.
+  static inline bool
+  successorNotNull(const llvm::GraphTraits<RegionNode *>::NodeRef &Src,
+                   const llvm::GraphTraits<RegionNode *>::NodeRef &Tgt) {
+
+    return Tgt != nullptr;
+  }
+
+  /// Select only std::variant pointing to other regions.
+  static inline bool successorIsVariant(
+      llvm::GraphTraits<RegionNode::NodeRef *>::NodeRef const &Src,
+      llvm::GraphTraits<RegionNode::NodeRef *>::NodeRef const &Tgt) {
+    if (std::holds_alternative<RegionNodePointerPair>(**Tgt)) {
+      return true;
+    }
+    return false;
+  }
 
   using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
   mlir::LogicalResult
@@ -449,11 +468,25 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Output as debug the `RegionTree` structure.
       printRegionTree(Rt);
 
+      /// Filtered Graph with only undecided nodes
+      // using NodeFilteredTG =
+      // NodePairFilteredGraph<RegionNode *, successorNotNull>;
+      using NodeFilteredTG =
+          NodePairFilteredGraph<RegionNode::NodeRef *, successorIsVariant>;
+
+      // for (RegionNode::NodeRef * : post_order(NodeFilteredTG()))
+
       // Instantiate a postorder visit on the `RegionTree` in order to perform
       // the first iteration outlining.
       // We start the visit from the last node in the `RegionTree`, which is
       // always the `root` region.
-      for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
+      RegionNode::NodeRef InitialVariant = std::make_pair(0, &Rt);
+      for (auto &Variant : post_order(NodeFilteredTG(&InitialVariant))) {
+      }
+      /*
+      for (RegionNode *Region : post_order(NodeFilteredTG(&InitialVariant))) {
+        // {
+        // for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
 
         // We now perform the first iteration outlining procedure. The
         // outlining is morally performed by the parent region for its
@@ -479,7 +512,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           OutlinedCycle |= outlineFirstIteration(
               LateEntryPairs, NodesSet, OutlinedNodes, Entry, Rewriter);
 
-          // The outlined nodes must be added to the parent region with respect
+          // The outlined nodes must be added to the parent region with
+      respect
           // to the one they were extracted form, that is the region we are
           // iterating onto.
           for (mlir::Block *OutlinedBlock : OutlinedNodes) {
@@ -487,6 +521,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
           }
         }
       }
+      */
     }
   }
 
@@ -600,8 +635,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       updateTerminatorOperands(Exit, GotoMapping);
     }
 
-    // Additional check that all the successors of each block now living inside
-    // the `clift.loop`, is also in the same region.
+    // Additional check that all the successors of each block now living
+    // inside the `clift.loop`, is also in the same region.
     for (mlir::Block &CliftLoopBlock : LoopRegion) {
       for (mlir::Block *Successor : successor_range(&CliftLoopBlock)) {
         assert(Successor->getParent() == &LoopRegion);
