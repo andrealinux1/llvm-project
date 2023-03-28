@@ -159,7 +159,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         llvm::dbgs() << "\n";
       } else if (std::holds_alternative<RegionNodePointerPair>(Block)) {
         RegionNodePointerPair Pair = std::get<RegionNodePointerPair>(Block);
-        llvm::dbgs() << "Subregion ID: " << Pair.first;
+        llvm::dbgs() << "Subregion ID: " << Pair.first << "\n";
       }
     }
   }
