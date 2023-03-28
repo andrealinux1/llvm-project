@@ -49,7 +49,10 @@ public:
   }
 
   static const NodeRef &getEntryNode(const NodeRef &N) { return N; }
+private:
+  using X = std::function<bool(const NodeRef &)>;
 
+public:
   // static ChildIteratorType child_begin(NodeRef)
   // static ChildIteratorType child_end  (NodeRef)
   //    Return iterators that point to the beginning and ending of the child
@@ -57,14 +60,14 @@ public:
   static auto child_begin(NodeRef N) {
     auto Childs = llvm::make_range(BaseGraphTraits::child_begin(N),
                                    BaseGraphTraits::child_end(N));
-    const auto P = std::bind(PredicateType::value, N, std::placeholders::_1);
+    const X P = [N](const NodeRef &Placeholder) { return PredicateType::value(N, Placeholder); };
     return llvm::make_filter_range(Childs, std::move(P)).begin();
   }
   static auto child_end(NodeRef N) {
     auto Childs = llvm::make_range(BaseGraphTraits::child_begin(N),
                                    BaseGraphTraits::child_end(N));
-    const auto P = std::bind(PredicateType::value, N, std::placeholders::_1);
-    return llvm::make_filter_range(Childs, std::move(P)).end();
+   const X P = [N](const NodeRef &Placeholder) { return PredicateType::value(N, Placeholder); };
+   return llvm::make_filter_range(Childs, std::move(P)).end();
   }
 
   static_assert(std::is_same_v<decltype(child_begin(std::declval<NodeRef>())),
@@ -103,6 +106,10 @@ public:
     return InvGraphTraits::getEntryNode(G.Graph);
   }
 
+private:
+  using X = std::function<bool(const NodeRef &)>;
+
+public:
   // static ChildIteratorType child_begin(NodeRef)
   // static ChildIteratorType child_end  (NodeRef)
   //    Return iterators that point to the beginning and ending of the child
@@ -110,14 +117,14 @@ public:
   static auto child_begin(NodeRef N) {
     auto Childs = llvm::make_range(InvGraphTraits::child_begin(N),
                                    InvGraphTraits::child_end(N));
-    const auto P = std::bind(PredicateType::value, std::placeholders::_1, N);
+    const X P = [N](const NodeRef &Placeholder) { return PredicateType::value(Placeholder, N); };
     return llvm::make_filter_range(Childs, std::move(P)).begin();
   }
   static auto child_end(NodeRef N) {
     auto Childs = llvm::make_range(InvGraphTraits::child_begin(N),
                                    InvGraphTraits::child_end(N));
-    const auto P = std::bind(PredicateType::value, std::placeholders::_1, N);
-    return llvm::make_filter_range(Childs, std::move(P)).end();
+  const X P = [N](const NodeRef &Placeholder) { return PredicateType::value(Placeholder, N); };
+      return llvm::make_filter_range(Childs, std::move(P)).end();
   }
 
   static_assert(std::is_same_v<decltype(child_begin(std::declval<NodeRef>())),
