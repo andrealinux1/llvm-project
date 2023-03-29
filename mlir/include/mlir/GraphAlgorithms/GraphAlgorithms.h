@@ -564,6 +564,8 @@ private:
 public:
   RegionTree() = default;
 
+  void clear() { Regions.clear(); }
+
   void insertRegion(RegionVector &&Region) {
     Regions.emplace_back(std::move(Region));
   }

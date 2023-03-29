@@ -346,7 +346,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
   // This function returns true if a cycle has been outlined from any region.
   // This is used to re-run the region identification step.
-  bool outlineOnRegionTree(RegionTree &Rt, mlir::PatternRewriter &Rewriter) const {
+  bool outlineOnRegionTree(RegionTree &Rt,
+                           mlir::PatternRewriter &Rewriter) const {
     bool OutlinedCycle = false;
 
     // Instantiate a postorder visit on the `RegionTree` in order to perform
@@ -405,9 +406,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     bool OutlinedCycle = true;
     while (OutlinedCycle) {
 
-      // Clear the `ParentTree` object, a new iteration of the region
-      // identification process is run.
+      // Clear the `ParentTree` and `RegionTree` objects, a new iteration of the
+      // region identification process is run.
       Pt.clear();
+      Rt.clear();
 
       EdgeSet Backedges = getBackedges(&FunctionRegion.front());
       llvm::dbgs() << "\nInitial backedges:\n";
