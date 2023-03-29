@@ -647,7 +647,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // `continue` containing block.
       IRMapping ContinueMapping;
       ContinueMapping.map(Entry, ContinueBlock);
-      updateTerminatorOperands(Continue, ContinueMapping);
+      bool Updated = updateTerminatorOperands(Continue, ContinueMapping);
+      assert(Updated == true);
     }
   }
 
