@@ -344,6 +344,53 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  // This function returns true if a cycle has been outlined from any region.
+  // This is used to re-run the region identification step.
+  bool outlineOnRegionTree(RegionTree &Rt, mlir::PatternRewriter &Rewriter) const {
+    bool OutlinedCycle = false;
+
+    // Instantiate a postorder visit on the `RegionTree` in order to perform
+    // the first iteration outlining.
+    // We start the visit from the last node in the `RegionTree`, which is
+    // always the `root` region.
+    for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
+
+      // We now perform the first iteration outlining procedure. The
+      // outlining is morally performed by the parent region for its
+      // children regions.
+      for (RegionNode *ChildRegion : Region->successor_range()) {
+
+        BlockSet NodesSet = ChildRegion->getBlocksSet();
+        mlir::Block *Entry = ChildRegion->getEntryBlock();
+
+        llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+            getEntryCandidates<mlir::Block *>(NodesSet);
+
+        llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
+            LateEntryPairs = getOutlinedEntries<mlir::Block *>(EntryCandidates,
+                                                               NodesSet, Entry);
+
+        // Print all the outside predecessor.
+        llvm::dbgs() << "\nNon regular entry candidates found:\n";
+        printPairVector(LateEntryPairs);
+
+        // Outline the first iteration of the cycles.
+        BlockSet OutlinedNodes;
+        OutlinedCycle |= outlineFirstIteration(LateEntryPairs, NodesSet,
+                                               OutlinedNodes, Entry, Rewriter);
+
+        // The outlined nodes must be added to the parent region with respect
+        // to the one they were extracted form, that is the region we are
+        // iterating onto.
+        for (mlir::Block *OutlinedBlock : OutlinedNodes) {
+          Region->insertElement(OutlinedBlock);
+        }
+      }
+    }
+
+    return OutlinedCycle;
+  }
+
   void performRegionIdentification(mlir::Region &FunctionRegion,
                                    mlir::PatternRewriter &Rewriter,
                                    RegionTree &Rt) const {
@@ -357,7 +404,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // regions.
     bool OutlinedCycle = true;
     while (OutlinedCycle) {
-      OutlinedCycle = false;
 
       // Clear the `ParentTree` object, a new iteration of the region
       // identification process is run.
@@ -451,44 +497,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Output as debug the `RegionTree` structure.
       printRegionTree(Rt);
 
-      // Instantiate a postorder visit on the `RegionTree` in order to perform
-      // the first iteration outlining.
-      // We start the visit from the last node in the `RegionTree`, which is
-      // always the `root` region.
-      for (RegionNode *Region : post_order(&*(Rt.rbegin()))) {
-
-        // We now perform the first iteration outlining procedure. The
-        // outlining is morally performed by the parent region for its
-        // children regions.
-        for (RegionNode *ChildRegion : Region->successor_range()) {
-
-          BlockSet NodesSet = ChildRegion->getBlocksSet();
-          mlir::Block *Entry = ChildRegion->getEntryBlock();
-
-          llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
-              getEntryCandidates<mlir::Block *>(NodesSet);
-
-          llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-              LateEntryPairs = getOutlinedEntries<mlir::Block *>(
-                  EntryCandidates, NodesSet, Entry);
-
-          // Print all the outside predecessor.
-          llvm::dbgs() << "\nNon regular entry candidates found:\n";
-          printPairVector(LateEntryPairs);
-
-          // Outline the first iteration of the cycles.
-          BlockSet OutlinedNodes;
-          OutlinedCycle |= outlineFirstIteration(
-              LateEntryPairs, NodesSet, OutlinedNodes, Entry, Rewriter);
-
-          // The outlined nodes must be added to the parent region with respect
-          // to the one they were extracted form, that is the region we are
-          // iterating onto.
-          for (mlir::Block *OutlinedBlock : OutlinedNodes) {
-            Region->insertElement(OutlinedBlock);
-          }
-        }
-      }
+      // Perform region outlining. If we the function returns true, it means
+      // that a loop was outlined, and we need therefore to reiterate the
+      // analysis.
+      OutlinedCycle = outlineOnRegionTree(Rt, Rewriter);
     }
   }
 
