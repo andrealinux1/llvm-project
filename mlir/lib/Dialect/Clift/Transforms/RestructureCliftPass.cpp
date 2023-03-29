@@ -169,8 +169,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     for (RegionNode &RegionNode : RegionTree.regions()) {
       llvm::dbgs() << "Region idx: " << RegionIndex << " composed by nodes:\n";
       printRegionNode(RegionNode);
+      RegionIndex++;
     }
-    RegionIndex++;
   }
 
   bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping) const {
