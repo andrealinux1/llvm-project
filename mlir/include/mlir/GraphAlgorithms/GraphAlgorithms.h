@@ -354,58 +354,77 @@ template <class NodeT>
 class RegionTree;
 
 template <class NodeT>
-using RegionNodePointerPair = std::pair<size_t, RegionTree<NodeT> *>;
-
-template <class NodeT>
 class RegionNode {
 public:
-  using RegionNodePointerPair = RegionNodePointerPair<NodeT>;
-  using NodeRef = std::variant<NodeT, RegionNodePointerPair>;
+  using BlockNode = NodeT;
 
-  using links_container = llvm::SmallVector<NodeRef>;
+  struct ChildRegionDescriptor {
+    size_t ChildIndex;
+    RegionTree<NodeT> *OwningRegionTree;
+  };
+
+private:
+  using links_container = llvm::SmallVector<BlockNode>;
   using links_iterator = typename links_container::iterator;
   using links_const_iterator = typename links_container::const_iterator;
   using links_range = llvm::iterator_range<links_iterator>;
   using links_const_range = llvm::iterator_range<links_const_iterator>;
 
-private:
   RegionTree<NodeT> &OwningRegionTree;
 
-  using getRegionPointerT = RegionNode *(*)(NodeRef &);
-  using getConstRegionPointerT = const RegionNode *(*)(const NodeRef &);
+  using getRegionPointerT = RegionNode *(*)(ChildRegionDescriptor &);
+  using getConstRegionPointerT =
+      const RegionNode *(*)(const ChildRegionDescriptor &);
 
-  static RegionNode *getRegionPointer(NodeRef &Successor) {
-    if (std::holds_alternative<RegionNodePointerPair>(Successor)) {
-      RegionNodePointerPair SuccessorPair =
-          std::get<RegionNodePointerPair>(Successor);
-      return &SuccessorPair.second->getRegion(SuccessorPair.first);
-    } else {
-      return nullptr;
-    }
+  static RegionNode *getRegionPointer(ChildRegionDescriptor &Successor) {
+    RegionNode *ChildRegionPointer =
+        &Successor.OwningRegionTree->getRegion(Successor.ChildIndex);
+    assert(ChildRegionPointer != nullptr);
+    return ChildRegionPointer;
   }
 
   static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
 
-  static const RegionNode *getConstRegionPointer(const NodeRef &Successor) {
-    if (std::holds_alternative<size_t>(Successor)) {
-      RegionNodePointerPair SuccessorPair =
-          std::get<RegionNodePointerPair>(Successor);
-      return &SuccessorPair.second->getRegion(SuccessorPair.first);
-    } else {
-      return nullptr;
-    }
+  static const RegionNode *
+  getConstRegionPointer(const ChildRegionDescriptor &Successor) {
+    RegionNode *ChildRegionPointer =
+        Successor.OwningRegionTree->getRegion(Successor.ChildIndex);
+    assert(ChildRegionPointer != nullptr);
+    return ChildRegionPointer;
   }
 
   static_assert(
       std::is_same_v<decltype(&getConstRegionPointer), getConstRegionPointerT>);
 
+  using succ_container = llvm::SmallVector<ChildRegionDescriptor>;
+  using succ_internal_iterator = typename succ_container::iterator;
+  using succ_internal_const_iterator = typename succ_container::const_iterator;
+  using succ_internal_range = llvm::iterator_range<succ_internal_iterator>;
+  using succ_internal_const_range =
+      llvm::iterator_range<succ_internal_const_iterator>;
+  using succ_iterator =
+      llvm::mapped_iterator<succ_internal_iterator, getRegionPointerT>;
+  using succ_const_iterator =
+      llvm::mapped_iterator<succ_internal_const_iterator,
+                            getConstRegionPointerT>;
+  using succ_range = llvm::iterator_range<succ_iterator>;
+  using succ_const_range = llvm::iterator_range<succ_const_iterator>;
+
+  enum EntryState { Invalid, NodesVector, ChildrenVector };
+
 private:
-  void erase(links_container &V, NodeRef Value) {
+  void erase(links_container &V, BlockNode Value) {
+    V.erase(std::remove(V.begin(), V.end(), Value), V.end());
+  }
+
+  void erase(succ_container &V, ChildRegionDescriptor Value) {
     V.erase(std::remove(V.begin(), V.end(), Value), V.end());
   }
 
 private:
   links_container Nodes;
+  succ_container Children;
+  EntryState EntryState = Invalid;
 
 public:
   RegionNode(RegionTree<NodeT> &RegionTree) : OwningRegionTree(RegionTree) {}
@@ -419,96 +438,89 @@ public:
   links_const_iterator begin() const { return Nodes.begin(); }
   links_iterator end() { return Nodes.end(); }
   links_const_iterator end() const { return Nodes.end(); }
-  links_range regions() { return llvm::make_range(begin(), end()); }
-  links_const_range regions() const { return llvm::make_range(begin(), end()); }
-
-  auto getBlocks() {
-    return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<NodeT>(Node);
-    });
-  }
+  links_range blocks() { return llvm::make_range(begin(), end()); }
+  links_const_range blocks() const { return llvm::make_range(begin(), end()); }
 
   llvm::SmallSet<NodeT, 4> getBlocksSet() {
-    llvm::SmallSet<NodeT, 4> Set;
-    for (NodeRef BlockNode : getBlocks()) {
-
-      // Extract the `mlir::Block *` from the std::variant.
-      assert(std::holds_alternative<NodeT>(BlockNode));
-      NodeT Block = std::get<NodeT>(BlockNode);
-      Set.insert(Block);
+    llvm::SmallSet<NodeT, 4> BlocksSet;
+    for (NodeT Block : blocks()) {
+      BlocksSet.insert(Block);
     }
-    return Set;
+
+    return BlocksSet;
+  }
+
+  succ_internal_iterator succ_begin_naked() { return Children.begin(); }
+  succ_internal_iterator succ_end_naked() { return Children.end(); }
+  succ_internal_const_iterator succ_const_begin_naked() {
+    return Children.begin();
+  }
+  succ_internal_const_iterator succ_const_end_naked() { return Children.end(); }
+  succ_internal_range successor_range_naked() {
+    return llvm::make_range(succ_begin_naked(), succ_end_naked());
+  }
+  succ_internal_const_range successor_const_range_naked() {
+    return llvm::make_range(succ_const_begin_naked(), succ_const_end_naked());
   }
 
   // If we invoke this method, the entry node must be a block node, so no
-  // substitution with a child index must have happened.
+  // substitution with a child region descriptor must have happened.
   NodeT getEntryBlock() {
-    assert(std::holds_alternative<NodeT>(Nodes[0]));
-    return std::get<NodeT>(Nodes[0]);
+    assert(EntryState == NodesVector);
+    assert(!Nodes.empty());
+    return Nodes[0];
   }
 
-  auto getSuccessorsIndex() {
-    return llvm::make_filter_range(Nodes, [](NodeRef &Node) {
-      return std::holds_alternative<RegionNodePointerPair>(Node);
-    });
+  succ_iterator succ_begin() {
+    return llvm::map_iterator(Children.begin(), getRegionPointer);
   }
-
-  auto getSuccessorsPointers() {
-    llvm::SmallVector<RegionNode *> SuccessorsPointer;
-    for (auto Element : Nodes) {
-      if (std::holds_alternative<RegionNodePointerPair>(Element)) {
-        auto SuccessorPair = std::get<RegionNodePointerPair>(Element);
-        RegionNode *SuccessorPointer =
-            &SuccessorPair.second->getRegion(SuccessorPair.first);
-        SuccessorsPointer.push_back(SuccessorPointer);
-      }
-    }
-
-    return SuccessorsPointer;
+  succ_const_iterator succ_const_begin() const {
+    return llvm::map_iterator(Children.begin(), getConstRegionPointer);
   }
-
-  /*
-  auto succ_begin() {
-    return llvm::map_iterator(Nodes.begin(), getRegionPointer);
+  succ_iterator succ_end() {
+    return llvm::map_iterator(Children.end(), getRegionPointer);
   }
-  */
-
-  auto succ_begin() { return getSuccessorsPointers().begin(); }
-
-  auto succ_const_begin() const {
-    return llvm::map_iterator(Nodes.begin(), getConstRegionPointer);
+  succ_const_iterator succ_const_end() const {
+    return llvm::map_iterator(Children.end(), getConstRegionPointer);
   }
-
-  /*
-    auto succ_end() { return llvm::map_iterator(Nodes.end(), getRegionPointer);
-    }
-  */
-
-  auto succ_end() {
-    return getSuccessorsPointers().end();
-    ;
+  succ_range successor_range() {
+    return llvm::make_range(succ_begin(), succ_end());
   }
-
-  auto succ_const_end() const {
-    return llvm::map_iterator(Nodes.end(), getConstRegionPointer);
-  }
-
-  auto successor_range() { return llvm::make_range(succ_begin(), succ_end()); }
-
-  auto successor_const_range() {
+  succ_const_range successor_const_range() {
     return llvm::make_range(succ_const_begin(), succ_const_end());
   }
 
   // Insert helpers.
-  void insertElement(NodeRef Element) { Nodes.push_back(Element); }
+  void insertElement(BlockNode Element) { Nodes.push_back(Element); }
+  void insertElement(size_t Element) {
+    struct ChildRegionDescriptor ElementDescriptor = {Element,
+                                                      &OwningRegionTree};
+    Children.push_back(ElementDescriptor);
+  }
 
-  void insertElementEntry(NodeRef Element) { Nodes.insert(begin(), Element); }
+  void insertElementEntry(BlockNode Element) {
+    Nodes.insert(begin(), Element);
+    EntryState = NodesVector;
+  }
+  void insertElementEntry(size_t Element) {
+    struct ChildRegionDescriptor ElementDescriptor = {Element,
+                                                      &OwningRegionTree};
+    Children.insert(succ_begin_naked(), ElementDescriptor);
+    EntryState = ChildrenVector;
+  }
 
-  // If we are removing the first element (hardcoded entry), we signal it with
-  // the return code.
-  bool eraseElement(NodeRef Element) {
-    bool IsEntry = Nodes.front() == Element;
+  // If we are removing the first element (of either the `Nodes` or `Children`
+  // vector), we signal it with the return code.
+  bool eraseElement(BlockNode Element) {
+    bool IsEntry = (Nodes.front() == Element) and (EntryState == NodesVector);
     erase(Nodes, Element);
+    return IsEntry;
+  }
+
+  bool eraseElement(ChildRegionDescriptor Element) {
+    bool IsEntry =
+        (Children.front() == Element) and (EntryState == ChildrenVector);
+    erase(Children, Element);
     return IsEntry;
   }
 
@@ -517,12 +529,10 @@ public:
     // The `ChildRegion` can be the entry, only if the entry block is indeed an
     // index to a `ChildRegion`, and the first region in the `Children` vector
     // is indeedthe passed one.
-    assert(!Nodes.empty());
-    if (std::holds_alternative<RegionNodePointerPair>(Nodes[0])) {
-      size_t EntryRegionIndex = std::get<RegionNodePointerPair>(Nodes[0]).first;
-      if (&OwningRegionTree.getRegion(EntryRegionIndex) == ChildRegion) {
-        return true;
-      }
+    assert(!Children.empty());
+    ChildRegionDescriptor &Entry = Children[0];
+    if (&Entry.OwningRegionTree->getRegion(Entry.ChildIndex) == ChildRegion) {
+      return true;
     }
     return false;
   }
@@ -741,36 +751,6 @@ public:
 } // namespace revng::detail
 
 namespace llvm {
-
-// New trait on std::variant.
-template <>
-struct GraphTraits<revng::detail::RegionNode<mlir::Block *>::NodeRef *> {
-  using Node = revng::detail::RegionNode<mlir::Block *>::NodeRef *;
-  using NodeRef = Node *;
-
-  using RegionNodePointerPair =
-      revng::detail::RegionNodePointerPair<mlir::Block *>;
-  using RegionNode = revng::detail::RegionNode<mlir::Block *>;
-
-  using ChildIteratorType = RegionNode::links_iterator;
-
-  static NodeRef getEntryNode(NodeRef BB) { return BB; }
-
-  static ChildIteratorType child_begin(const NodeRef &Node) {
-    auto SuccessorPair = std::get<RegionNodePointerPair>(**Node);
-    RegionNode *PointedRegion =
-        &SuccessorPair.second->getRegion(SuccessorPair.first);
-    return PointedRegion->begin();
-  }
-
-  static ChildIteratorType child_end(const NodeRef &Node) {
-    auto SuccessorPair = std::get<RegionNodePointerPair>(**Node);
-    RegionNode *PointedRegion =
-        &SuccessorPair.second->getRegion(SuccessorPair.first);
-    return PointedRegion->end();
-  }
-};
-
 template <>
 struct GraphTraits<revng::detail::RegionNode<mlir::Block *> *> {
   using Node = revng::detail::RegionNode<mlir::Block *>;
