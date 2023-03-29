@@ -280,6 +280,70 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
+  void initializeParentTree(ParentTree &Pt, RegionTree &Rt) const {
+    // Transpile the already ordered regions into a `RegionTree`.
+    size_t RegionIndex = 0;
+    std::map<BlockSet *, size_t> RegionIDMap;
+    for (BlockSet &Region : Pt.regions()) {
+
+      // Populate the map containing the correspondance between region and
+      // index.
+      RegionIDMap[&Region] = RegionIndex;
+
+      // Create the `RegionNode` object.
+      RegionNode RegionNode(Rt);
+
+      // Insert in the `RegionNode` the entry at first, and then the other
+      // nodes.
+      mlir::Block *Entry = Pt.getRegionEntry(Region);
+      RegionNode.insertElementEntry(Entry);
+      for (mlir::Block *B : Region) {
+        if (B != Entry) {
+          RegionNode.insertElement(B);
+        }
+      }
+
+      // Insert the `RegionNode` in the `RegionTree` object.
+      Rt.insertRegion(std::move(RegionNode));
+      RegionIndex++;
+    }
+
+    // Cycling through the original regions, and exploiting the `ParentMap`
+    // relationship we substitute in the regions the nodes by the index
+    // representing the nested region.
+    for (BlockSet &Region : Pt.regions()) {
+
+      // Check that the region we are analyzing actually has a `Parent`.
+      if (Pt.hasParent(Region)) {
+
+        // We obtain the ID of the `Parent` region, exploting the map data
+        // structure that we kept for this purpose.
+        size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
+
+        // We obtain the `Parent` region from the `RegionTree` data structure.
+        RegionNode &ParentRegion = Rt.getRegion(ParentIndex);
+
+        // Remove from the `Parent` region all the blocks that belong to the
+        // current region. If we happen to remove the entry block from a
+        // region, the subsequent insertion of the `RegionIndex` will become
+        // the entry of the region.
+        bool IsEntry = false;
+        for (mlir::Block *Block : Region) {
+          IsEntry |= ParentRegion.eraseElement(Block);
+        }
+
+        // Insert in the `Parent` region the ID representing the current child
+        // region.
+        size_t CurrentIndex = RegionIDMap.at(&Region);
+        if (IsEntry) {
+          ParentRegion.insertElementEntry(CurrentIndex);
+        } else {
+          ParentRegion.insertElement(CurrentIndex);
+        }
+      }
+    }
+  }
+
   void performRegionIdentification(mlir::Region &FunctionRegion,
                                    mlir::PatternRewriter &Rewriter,
                                    RegionTree &Rt) const {
@@ -381,67 +445,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         RegionIndex++;
       }
 
-      // Transpile the already ordered regions into a `RegionTree`.
-      RegionIndex = 0;
-      std::map<BlockSet *, size_t> RegionIDMap;
-      for (BlockSet &Region : Pt.regions()) {
-
-        // Populate the map containing the correspondance between region and
-        // index.
-        RegionIDMap[&Region] = RegionIndex;
-
-        // Create the `RegionNode` object.
-        RegionNode RegionNode(Rt);
-
-        // Insert in the `RegionNode` the entry at first, and then the other
-        // nodes.
-        mlir::Block *Entry = Pt.getRegionEntry(Region);
-        RegionNode.insertElementEntry(Entry);
-        for (mlir::Block *B : Region) {
-          if (B != Entry) {
-            RegionNode.insertElement(B);
-          }
-        }
-
-        // Insert the `RegionNode` in the `RegionTree` object.
-        Rt.insertRegion(std::move(RegionNode));
-        RegionIndex++;
-      }
-
-      // Cycling through the original regions, and exploiting the `ParentMap`
-      // relationship we substitute in the regions the nodes by the index
-      // representing the nested region.
-      for (BlockSet &Region : Pt.regions()) {
-
-        // Check that the region we are analyzing actually has a `Parent`.
-        if (Pt.hasParent(Region)) {
-
-          // We obtain the ID of the `Parent` region, exploting the map data
-          // structure that we kept for this purpose.
-          size_t ParentIndex = RegionIDMap.at(&Pt.getParent(Region));
-
-          // We obtain the `Parent` region from the `RegionTree` data structure.
-          RegionNode &ParentRegion = Rt.getRegion(ParentIndex);
-
-          // Remove from the `Parent` region all the blocks that belong to the
-          // current region. If we happen to remove the entry block from a
-          // region, the subsequent insertion of the `RegionIndex` will become
-          // the entry of the region.
-          bool IsEntry = false;
-          for (mlir::Block *Block : Region) {
-            IsEntry |= ParentRegion.eraseElement(Block);
-          }
-
-          // Insert in the `Parent` region the ID representing the current child
-          // region.
-          size_t CurrentIndex = RegionIDMap.at(&Region);
-          if (IsEntry) {
-            ParentRegion.insertElementEntry(CurrentIndex);
-          } else {
-            ParentRegion.insertElement(CurrentIndex);
-          }
-        }
-      }
+      // Initialize the `RegionTree` object.
+      initializeParentTree(Pt, Rt);
 
       // Output as debug the `RegionTree` structure.
       printRegionTree(Rt);
