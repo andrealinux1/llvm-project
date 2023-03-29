@@ -5,6 +5,7 @@
 //
 
 #include <cstddef>
+#include <optional>
 #include <set>
 #include <variant>
 #include <vector>
@@ -469,6 +470,14 @@ public:
     assert(EntryState == NodesVector);
     assert(!Nodes.empty());
     return Nodes[0];
+  }
+
+  std::optional<NodeT> getEntryIfBlock() {
+    if (EntryState == NodesVector) {
+      assert(!Nodes.empty());
+      return Nodes[0];
+    }
+    return std::nullopt;
   }
 
   succ_iterator succ_begin() {
