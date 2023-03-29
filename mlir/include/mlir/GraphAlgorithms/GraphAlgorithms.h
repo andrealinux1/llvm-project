@@ -530,9 +530,11 @@ public:
     // index to a `ChildRegion`, and the first region in the `Children` vector
     // is indeedthe passed one.
     assert(!Children.empty());
-    ChildRegionDescriptor &Entry = Children[0];
-    if (&Entry.OwningRegionTree->getRegion(Entry.ChildIndex) == ChildRegion) {
-      return true;
+    if (EntryState == ChildrenVector) {
+      ChildRegionDescriptor &Entry = Children[0];
+      if (&Entry.OwningRegionTree->getRegion(Entry.ChildIndex) == ChildRegion) {
+        return true;
+      }
     }
     return false;
   }
