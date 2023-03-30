@@ -646,15 +646,24 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   void generateCliftContinue(BlockSet &Region, mlir::Block *Entry,
                              mlir::PatternRewriter &Rewriter,
                              clift::LoopOp CliftLoop) const {
+    // Due to how the population of `populateCliftLoopBody` function works, an
+    // additional empty entry block (whose sole role is to jump to the correct
+    // entry) is placed at the beginning of each region created in the
+    // `clift.loop` body. We need to ignore the edge going from this empty entry
+    // to the entry node, or we will place an additional, and erroneous,
+    // `continue`.
+    mlir::Region &LoopRegion = CliftLoop->getRegion(0);
+    mlir::Block *EmptyEntry = &LoopRegion.front();
+
     // Insert the `clift.continue` operation.
     llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-        ContinueNodePairs = getContinueNodePairs<mlir::Block *>(Entry, Region);
+        ContinueNodePairs =
+            getContinueNodePairs<mlir::Block *>(Entry, Region, EmptyEntry);
     for (const auto &[Continue, Entry] : ContinueNodePairs) {
 
       // Creation of a block that will contain the `clift.continue`
       // operation.
-      mlir::Block *ContinueBlock =
-          Rewriter.createBlock(&CliftLoop->getRegion(0));
+      mlir::Block *ContinueBlock = Rewriter.createBlock(&LoopRegion);
 
       // Create the `clift.continue` operation.
       Rewriter.setInsertionPointToStart(ContinueBlock);

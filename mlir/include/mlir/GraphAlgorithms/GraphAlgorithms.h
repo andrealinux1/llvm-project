@@ -984,10 +984,11 @@ getLoopPredecessorNodePairs(NodeRef Node,
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region) {
+getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region,
+                     NodeRef IgnoredNode) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
   for (NodeRef Predecessor : predecessor_range(Entry)) {
-    if (setContains(Region, Predecessor)) {
+    if (Predecessor != IgnoredNode and setContains(Region, Predecessor)) {
       ContinueNodePairs.push_back({Predecessor, Entry});
     }
   }
