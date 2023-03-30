@@ -383,11 +383,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         mlir::Block *Entry = EntryOpt.value_or(nullptr);
 
         llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
-            getEntryCandidates<mlir::Block *>(NodesSet);
+            ChildRegion->getEntryCandidates();
 
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
-            LateEntryPairs = getOutlinedEntries<mlir::Block *>(EntryCandidates,
-                                                               NodesSet, Entry);
+            LateEntryPairs =
+                ChildRegion->getOutlinedEntries(EntryCandidates, Entry);
 
         // Print all the outside predecessor.
         llvm::dbgs() << "\nNon regular entry candidates found:\n";

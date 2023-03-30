@@ -744,6 +744,76 @@ public:
     }
     return false;
   }
+
+  bool containsBlock(BlockNode Candidate) {
+    llvm::SmallVector<RegionNode *> ToAnalyze;
+    ToAnalyze.push_back(this);
+
+    while (!ToAnalyze.empty()) {
+      RegionNode *LastRegion = ToAnalyze.back();
+      ToAnalyze.pop_back();
+
+      // Insert all the element in the currently analyzed region in a set to
+      // check for the containement criteria.
+      llvm::SmallSet<BlockNode, 4> RegionSet;
+      for (BlockNode Element : *LastRegion) {
+        RegionSet.insert(Element);
+      }
+
+      // Finish comparison if we find the node in the current `RegionSet`.
+      if (RegionSet.contains(Candidate)) {
+        return true;
+      }
+
+      // Enqueue all the children regions.
+      for (RegionNode *ChildRegion : LastRegion->successor_range()) {
+        ToAnalyze.push_back(ChildRegion);
+      }
+    }
+
+    // If the exploration of all the nested regions did not find the node, we
+    // can return false.
+    return false;
+  }
+
+  llvm::DenseMap<BlockNode, size_t> getEntryCandidates() {
+
+    // `DenseMap` that will contain all the candidate entries of the current
+    // region, with the associated incoming edges degree.
+    llvm::DenseMap<BlockNode, size_t> Result;
+
+    // We iterate over all the predecessors of a block, if we find a predecessor
+    // not in the current region, we increment the counter of the entry edges.
+    for (BlockNode Block : Nodes) {
+      for (BlockNode Predecessor : predecessor_range(Block)) {
+        if (not containsBlock(Predecessor)) {
+          Result[Block]++;
+        }
+      }
+    }
+
+    return Result;
+  }
+
+  llvm::SmallVector<std::pair<BlockNode, BlockNode>>
+  getOutlinedEntries(llvm::DenseMap<BlockNode, size_t> &EntryCandidates,
+                     BlockNode Entry) {
+    llvm::SmallVector<std::pair<BlockNode, BlockNode>> LateEntryPairs;
+    for (const auto &[Other, NumIncoming] : EntryCandidates) {
+      if (Other != Entry) {
+        llvm::SmallVector<BlockNode> OutsidePredecessor;
+        for (BlockNode Predecessor : predecessor_range(Other)) {
+          if (not containsBlock(Predecessor)) {
+            OutsidePredecessor.push_back(Predecessor);
+            LateEntryPairs.push_back({Predecessor, Other});
+          }
+        }
+        assert(OutsidePredecessor.size() == NumIncoming);
+      }
+    }
+
+    return LateEntryPairs;
+  }
 };
 
 // TODO: double check how to implement the variant with the fact that we want to
