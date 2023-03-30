@@ -549,7 +549,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
             getLoopPredecessorNodePairs<mlir::Block *>(Entry, Region);
     for (const auto &[Predecessor, EntryCandidate] : PredecessorNodePairs) {
       assert(EntryCandidate == Entry);
-      updateTerminatorOperands(Predecessor, EntryMapping);
+      bool Updated = updateTerminatorOperands(Predecessor, EntryMapping);
+      assert(Updated == true);
     }
 
     // Create a new `clift.loop` operation.
@@ -633,7 +634,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // containing block.
       IRMapping GotoMapping;
       GotoMapping.map(Successor, GotoBlock);
-      updateTerminatorOperands(Exit, GotoMapping);
+      bool Updated = updateTerminatorOperands(Exit, GotoMapping);
+      assert(Updated == true);
     }
 
     // Additional check that all the successors of each block now living
@@ -740,7 +742,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Remap the branches to the `clift.goto` block.
       IRMapping GotoMapping;
       GotoMapping.map(Target, GotoBlock);
-      updateTerminatorOperands(Source, GotoMapping);
+      bool Updated = updateTerminatorOperands(Source, GotoMapping);
+      assert(Updated == true);
     }
   }
 
