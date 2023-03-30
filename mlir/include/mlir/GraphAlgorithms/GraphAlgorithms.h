@@ -349,6 +349,203 @@ void sortRegions(llvm::SmallVector<llvm::SmallPtrSet<NodeT, 4>> &Rs) {
             });
 }
 
+template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
+          typename NodeRef = typename GT::NodeRef>
+llvm::DenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
+  llvm::DenseMap<NodeRef, size_t> ShortestPathFromEntry;
+
+  using SetType = llvm::bf_iterator_default_set<NodeRef>;
+  using bf_iterator = llvm::bf_iterator<GraphT, SetType, GT>;
+  auto BFSIt = bf_iterator::begin(Source);
+  auto BFSEnd = bf_iterator::end(Source);
+
+  for (; BFSIt != BFSEnd; ++BFSIt) {
+    NodeRef Block = *BFSIt;
+    size_t Depth = BFSIt.getLevel();
+
+    // Obtain the insertion iterator for the `Depth` block element.
+    auto ShortestIt = ShortestPathFromEntry.insert({Block, Depth});
+
+    // If we already had in the map an entry for the current block, we need to
+    // assert that the previously found value for the `Depth` is less or equal
+    // of the `Depth` we are inserting.
+    if (ShortestIt.second == false) {
+      assert(ShortestIt.first->second <= Depth);
+    }
+  }
+
+  return ShortestPathFromEntry;
+}
+
+template <class NodeT>
+bool setContains(llvm::SmallPtrSetImpl<NodeT> &Set, NodeT &Element) {
+  return Set.contains(Element);
+}
+
+template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
+auto child_range(GraphT Block) {
+  return llvm::make_range(GT::child_begin(Block), GT::child_end(Block));
+}
+
+template <class GraphT>
+auto successor_range(GraphT Block) {
+  return child_range(Block);
+}
+
+template <class GraphT>
+auto predecessor_range(GraphT Block) {
+  return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
+}
+
+template <class NodeRef>
+llvm::DenseMap<NodeRef, size_t>
+getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
+
+  // `DenseMap` that will contain all the candidate entries of a region, with
+  // the associated incoming edges degree.
+  llvm::DenseMap<NodeRef, size_t> Result;
+
+  // We can iterate over all the predecessors of a block, if we find a pred not
+  // in the current set, we increment the counter of the entry edges.
+  for (NodeRef Block : Region) {
+    for (NodeRef Predecessor : predecessor_range(Block)) {
+      if (not setContains(Region, Predecessor)) {
+        Result[Block]++;
+      }
+    }
+  }
+
+  return Result;
+}
+
+template <class NodeT>
+size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) {
+  auto MapIt = Map.find(Element);
+  assert(MapIt != Map.end());
+  return MapIt->second;
+}
+
+template <class NodeT>
+NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
+                 llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
+                 llvm::SmallVectorImpl<NodeT> &RPOT) {
+  // Elect the Entry as the the candidate entry with the largest number of
+  // incoming edges from outside the region.
+  // If there's a tie, i.e. there are 2 or more candidate entries with the
+  // same number of incoming edges from an outer region, we select the entry
+  // with the minimal shortest path from entry.
+  // It it's still a tie, i.e. there are 2 or more candidate entries with the
+  // same number of incoming edges from an outer region and the same minimal
+  // shortest path from entry, then we disambiguate by picking the entry that
+  // comes first in RPOT.
+  NodeT Entry = Entry = EntryCandidates.begin()->first;
+  {
+    size_t MaxNEntries = EntryCandidates.begin()->second;
+    auto ShortestPathIt = ShortestPathFromEntry.find(Entry);
+    assert(ShortestPathIt != ShortestPathFromEntry.end());
+    size_t ShortestPath = mapAt(ShortestPathFromEntry, Entry);
+    auto EntriesEnd = EntryCandidates.end();
+    for (NodeT Block : RPOT) {
+      auto EntriesIt = EntryCandidates.find(Block);
+      if (EntriesIt != EntriesEnd) {
+        const auto &[EntryCandidate, NumIncoming] = *EntriesIt;
+        if (NumIncoming > MaxNEntries) {
+          Entry = EntryCandidate;
+          ShortestPath = mapAt(ShortestPathFromEntry, EntryCandidate);
+        } else if (NumIncoming == MaxNEntries) {
+          size_t SP = mapAt(ShortestPathFromEntry, EntryCandidate);
+          if (SP < ShortestPath) {
+            Entry = EntryCandidate;
+            ShortestPath = SP;
+          }
+        }
+      }
+    }
+  }
+  assert(Entry != nullptr);
+  return Entry;
+}
+
+template <class NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
+                   llvm::SmallPtrSetImpl<NodeRef> &Region, NodeRef Entry) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
+  for (const auto &[Other, NumIncoming] : EntryCandidates) {
+    if (Other != Entry) {
+      llvm::SmallVector<NodeRef> OutsidePredecessor;
+      for (NodeRef Predecessor : predecessor_range(Other)) {
+        if (not setContains(Region, Predecessor)) {
+          OutsidePredecessor.push_back(Predecessor);
+          LateEntryPairs.push_back({Predecessor, Other});
+        }
+      }
+      assert(OutsidePredecessor.size() == NumIncoming);
+    }
+  }
+
+  return LateEntryPairs;
+}
+
+template <class NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
+
+  // Vector that contains the pairs of exit/successor node pairs.
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ExitSuccessorPairs;
+
+  // We iterate over all the successors of a block, if we find a successor not
+  // in the current set, we add the pairs of node to the set.
+  for (NodeRef Block : Region) {
+    for (NodeRef Successor : successor_range(Block)) {
+      if (not setContains(Region, Successor)) {
+        ExitSuccessorPairs.push_back({Block, Successor});
+      }
+    }
+  }
+
+  return ExitSuccessorPairs;
+}
+
+template <class NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getPredecessorNodePairs(NodeRef Node) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> PredecessorNodePairs;
+  for (NodeRef Predecessor : predecessor_range(Node)) {
+    PredecessorNodePairs.push_back({Predecessor, Node});
+  }
+
+  return PredecessorNodePairs;
+}
+
+template <class NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getLoopPredecessorNodePairs(NodeRef Node,
+                            llvm::SmallPtrSetImpl<NodeRef> &Region) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LoopPredecessorNodePairs;
+  for (NodeRef Predecessor : predecessor_range(Node)) {
+    if (not setContains(Region, Predecessor)) {
+      LoopPredecessorNodePairs.push_back({Predecessor, Node});
+    }
+  }
+
+  return LoopPredecessorNodePairs;
+}
+
+template <class NodeRef>
+llvm::SmallVector<std::pair<NodeRef, NodeRef>>
+getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region,
+                     NodeRef IgnoredNode) {
+  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
+  for (NodeRef Predecessor : predecessor_range(Entry)) {
+    if (Predecessor != IgnoredNode and setContains(Region, Predecessor)) {
+      ContinueNodePairs.push_back({Predecessor, Entry});
+    }
+  }
+
+  return ContinueNodePairs;
+}
+
 namespace revng::detail {
 
 template <class NodeT>
@@ -798,200 +995,3 @@ struct GraphTraits<revng::detail::RegionTree<mlir::Block *> *>
 };
 
 } // namespace llvm
-
-template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
-          typename NodeRef = typename GT::NodeRef>
-llvm::DenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
-  llvm::DenseMap<NodeRef, size_t> ShortestPathFromEntry;
-
-  using SetType = llvm::bf_iterator_default_set<NodeRef>;
-  using bf_iterator = llvm::bf_iterator<GraphT, SetType, GT>;
-  auto BFSIt = bf_iterator::begin(Source);
-  auto BFSEnd = bf_iterator::end(Source);
-
-  for (; BFSIt != BFSEnd; ++BFSIt) {
-    NodeRef Block = *BFSIt;
-    size_t Depth = BFSIt.getLevel();
-
-    // Obtain the insertion iterator for the `Depth` block element.
-    auto ShortestIt = ShortestPathFromEntry.insert({Block, Depth});
-
-    // If we already had in the map an entry for the current block, we need to
-    // assert that the previously found value for the `Depth` is less or equal
-    // of the `Depth` we are inserting.
-    if (ShortestIt.second == false) {
-      assert(ShortestIt.first->second <= Depth);
-    }
-  }
-
-  return ShortestPathFromEntry;
-}
-
-template <class NodeT>
-bool setContains(llvm::SmallPtrSetImpl<NodeT> &Set, NodeT &Element) {
-  return Set.contains(Element);
-}
-
-template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
-auto child_range(GraphT Block) {
-  return llvm::make_range(GT::child_begin(Block), GT::child_end(Block));
-}
-
-template <class GraphT>
-auto successor_range(GraphT Block) {
-  return child_range(Block);
-}
-
-template <class GraphT>
-auto predecessor_range(GraphT Block) {
-  return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
-}
-
-template <class NodeRef>
-llvm::DenseMap<NodeRef, size_t>
-getEntryCandidates(llvm::SmallPtrSetImpl<NodeRef> &Region) {
-
-  // `DenseMap` that will contain all the candidate entries of a region, with
-  // the associated incoming edges degree.
-  llvm::DenseMap<NodeRef, size_t> Result;
-
-  // We can iterate over all the predecessors of a block, if we find a pred not
-  // in the current set, we increment the counter of the entry edges.
-  for (NodeRef Block : Region) {
-    for (NodeRef Predecessor : predecessor_range(Block)) {
-      if (not setContains(Region, Predecessor)) {
-        Result[Block]++;
-      }
-    }
-  }
-
-  return Result;
-}
-
-template <class NodeT>
-size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) {
-  auto MapIt = Map.find(Element);
-  assert(MapIt != Map.end());
-  return MapIt->second;
-}
-
-template <class NodeT>
-NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
-                 llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
-                 llvm::SmallVectorImpl<NodeT> &RPOT) {
-  // Elect the Entry as the the candidate entry with the largest number of
-  // incoming edges from outside the region.
-  // If there's a tie, i.e. there are 2 or more candidate entries with the
-  // same number of incoming edges from an outer region, we select the entry
-  // with the minimal shortest path from entry.
-  // It it's still a tie, i.e. there are 2 or more candidate entries with the
-  // same number of incoming edges from an outer region and the same minimal
-  // shortest path from entry, then we disambiguate by picking the entry that
-  // comes first in RPOT.
-  NodeT Entry = Entry = EntryCandidates.begin()->first;
-  {
-    size_t MaxNEntries = EntryCandidates.begin()->second;
-    auto ShortestPathIt = ShortestPathFromEntry.find(Entry);
-    assert(ShortestPathIt != ShortestPathFromEntry.end());
-    size_t ShortestPath = mapAt(ShortestPathFromEntry, Entry);
-    auto EntriesEnd = EntryCandidates.end();
-    for (NodeT Block : RPOT) {
-      auto EntriesIt = EntryCandidates.find(Block);
-      if (EntriesIt != EntriesEnd) {
-        const auto &[EntryCandidate, NumIncoming] = *EntriesIt;
-        if (NumIncoming > MaxNEntries) {
-          Entry = EntryCandidate;
-          ShortestPath = mapAt(ShortestPathFromEntry, EntryCandidate);
-        } else if (NumIncoming == MaxNEntries) {
-          size_t SP = mapAt(ShortestPathFromEntry, EntryCandidate);
-          if (SP < ShortestPath) {
-            Entry = EntryCandidate;
-            ShortestPath = SP;
-          }
-        }
-      }
-    }
-  }
-  assert(Entry != nullptr);
-  return Entry;
-}
-
-template <class NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
-                   llvm::SmallPtrSetImpl<NodeRef> &Region, NodeRef Entry) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
-  for (const auto &[Other, NumIncoming] : EntryCandidates) {
-    if (Other != Entry) {
-      llvm::SmallVector<NodeRef> OutsidePredecessor;
-      for (NodeRef Predecessor : predecessor_range(Other)) {
-        if (not setContains(Region, Predecessor)) {
-          OutsidePredecessor.push_back(Predecessor);
-          LateEntryPairs.push_back({Predecessor, Other});
-        }
-      }
-      assert(OutsidePredecessor.size() == NumIncoming);
-    }
-  }
-
-  return LateEntryPairs;
-}
-
-template <class NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getExitNodePairs(llvm::SmallPtrSetImpl<NodeRef> &Region) {
-
-  // Vector that contains the pairs of exit/successor node pairs.
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ExitSuccessorPairs;
-
-  // We iterate over all the successors of a block, if we find a successor not
-  // in the current set, we add the pairs of node to the set.
-  for (NodeRef Block : Region) {
-    for (NodeRef Successor : successor_range(Block)) {
-      if (not setContains(Region, Successor)) {
-        ExitSuccessorPairs.push_back({Block, Successor});
-      }
-    }
-  }
-
-  return ExitSuccessorPairs;
-}
-
-template <class NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getPredecessorNodePairs(NodeRef Node) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>> PredecessorNodePairs;
-  for (NodeRef Predecessor : predecessor_range(Node)) {
-    PredecessorNodePairs.push_back({Predecessor, Node});
-  }
-
-  return PredecessorNodePairs;
-}
-
-template <class NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getLoopPredecessorNodePairs(NodeRef Node,
-                            llvm::SmallPtrSetImpl<NodeRef> &Region) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>> LoopPredecessorNodePairs;
-  for (NodeRef Predecessor : predecessor_range(Node)) {
-    if (not setContains(Region, Predecessor)) {
-      LoopPredecessorNodePairs.push_back({Predecessor, Node});
-    }
-  }
-
-  return LoopPredecessorNodePairs;
-}
-
-template <class NodeRef>
-llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getContinueNodePairs(NodeRef Entry, llvm::SmallPtrSetImpl<NodeRef> &Region,
-                     NodeRef IgnoredNode) {
-  llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
-  for (NodeRef Predecessor : predecessor_range(Entry)) {
-    if (Predecessor != IgnoredNode and setContains(Region, Predecessor)) {
-      ContinueNodePairs.push_back({Predecessor, Entry});
-    }
-  }
-
-  return ContinueNodePairs;
-}
