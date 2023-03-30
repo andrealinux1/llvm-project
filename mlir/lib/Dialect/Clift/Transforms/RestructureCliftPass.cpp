@@ -570,6 +570,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // Create a new empty block in the that we will use only as a
     // placeholder for inserting other blocks, then we will remove it.
     mlir::Block *EmptyBlock = Rewriter.createBlock(&LoopRegion);
+    Region.insert(EmptyBlock);
     mlir::Block *PlaceholderBlock = EmptyBlock;
 
     // Explicitly handle the entry block, which must come first in the
@@ -622,6 +623,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // We need create a new basic block which will contain the `goto`
       // statement, and then subsistute the branch to that block.
       mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
+      Region.insert(GotoBlock);
 
       // Create the `goto` in the new trampoline block.
       Rewriter.setInsertionPointToStart(GotoBlock);
@@ -664,6 +666,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // Creation of a block that will contain the `clift.continue`
       // operation.
       mlir::Block *ContinueBlock = Rewriter.createBlock(&LoopRegion);
+      Region.insert(ContinueBlock);
 
       // Create the `clift.continue` operation.
       Rewriter.setInsertionPointToStart(ContinueBlock);
@@ -695,7 +698,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void generateCliftRetreating(mlir::Block *Entry,
+  void generateCliftRetreating(BlockSet &Region, mlir::Block *Entry,
                                mlir::PatternRewriter &Rewriter,
                                clift::LoopOp CliftLoop) const {
     // Generate the abnormal retreating flows with the use of a couple of a
@@ -728,6 +731,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // We need to create a new basic block containing the `clift.goto`, and
       // then substitute the branch to this block.
       mlir::Block *GotoBlock = Rewriter.createBlock(&LoopRegion);
+      Region.insert(GotoBlock);
 
       // Create the `clift.goto` in the trampoline block.
       Rewriter.setInsertionPointToStart(GotoBlock);
@@ -771,7 +775,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         updateParentWithCliftLoop(Region, ChildRegion, Rt, CliftLoop);
 
-        generateCliftRetreating(Entry, Rewriter, CliftLoop);
+        generateCliftRetreating(NodesSet, Entry, Rewriter, CliftLoop);
       }
     }
   }
