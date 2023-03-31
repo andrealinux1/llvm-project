@@ -88,11 +88,15 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     return success();
   }
 
+  void printBlock(mlir::Block *Block) const {
+    Block->printAsOperand(llvm::dbgs());
+  }
+
   void printBackedge(EdgeDescriptor &Backedge) const {
     llvm::dbgs() << "Backedge: ";
-    Backedge.first->printAsOperand(llvm::dbgs());
+    printBlock(Backedge.first);
     llvm::dbgs() << " -> ";
-    Backedge.second->printAsOperand(llvm::dbgs());
+    printBlock(Backedge.second);
     llvm::dbgs() << "\n";
   }
 
@@ -108,7 +112,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       llvm::dbgs() << "We can reach blocks:\n";
       for (mlir::Block *Reachable :
            nodesBetween(Backedge.second, Backedge.first)) {
-        Reachable->printAsOperand(llvm::dbgs());
+        printBlock(Reachable);
         llvm::dbgs() << "\n";
       }
     }
@@ -119,7 +123,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     for (BlockSet &Region : Regions) {
       llvm::dbgs() << "Region idx: " << Regionindex << " composed by nodes: \n";
       for (mlir::Block *Block : Region) {
-        Block->printAsOperand(llvm::dbgs());
+        printBlock(Block);
         llvm::dbgs() << "\n";
       }
       Regionindex++;
@@ -129,14 +133,14 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   void printMap(llvm::DenseMap<mlir::Block *, size_t> &Map) const {
     llvm::dbgs() << "Map content:\n";
     for (auto const &[K, V] : Map) {
-      K->printAsOperand(llvm::dbgs());
+      printBlock(K);
       llvm::dbgs() << " -> " << V << "\n";
     }
   }
 
   void printVector(llvm::SmallVectorImpl<mlir::Block *> &Vector) const {
     for (mlir::Block *Element : Vector) {
-      Element->printAsOperand(llvm::dbgs());
+      printBlock(Element);
       llvm::dbgs() << "\n";
     }
   }
@@ -145,16 +149,16 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       llvm::SmallVectorImpl<std::pair<mlir::Block *, mlir::Block *>> &Vector)
       const {
     for (auto const &[First, Second] : Vector) {
-      First->printAsOperand(llvm::dbgs());
+      printBlock(First);
       llvm::dbgs() << " -> ";
-      Second->printAsOperand(llvm::dbgs());
+      printBlock(Second);
       llvm::dbgs() << "\n";
     }
   }
 
   void printRegionNode(RegionNode &RegionNode) const {
     for (BlockNode &Block : RegionNode) {
-      Block->printAsOperand(llvm::dbgs());
+      printBlock(Block);
       llvm::dbgs() << "\n";
     }
     for (ChildRegionDescriptor &ChildRegion :
