@@ -215,6 +215,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       auto Begin = odf_iterator::begin(LateEntry, State);
       auto End = odf_iterator::end(LateEntry, State);
 
+      // We should be performing at least one round of outlining.
+      assert(Begin != End);
+
       for (mlir::Block *Block : llvm::make_range(Begin, End)) {
 
         // Manual cloning of the block body.
@@ -238,7 +241,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         // respective clone (otherwise we could end up in outlining loops).
         updateTerminatorOperands(BlockClone, CloneMapping);
 
-        // Detect a loop, and in case
+        // Detect a loop, and in case set a variable that we will return, and
+        // will cause another iteration of the identification process.
         for (mlir::Block *Successor :
              llvm::make_range(GT::child_begin(Block), GT::child_end(Block))) {
           if (State.onStack(Successor)) {
@@ -257,7 +261,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // entry relative to the `LateEntry` block, or we could wrongly map other
       // branches to their clones extracted during this iteration.
       LateEntryOnlyMapping.map(LateEntry, CloneMapping.lookup(LateEntry));
-      updateTerminatorOperands(Predecessor, LateEntryOnlyMapping);
+      bool Updated =
+          updateTerminatorOperands(Predecessor, LateEntryOnlyMapping);
+      assert(Updated == true);
     }
 
     return OutlinedCycle;
