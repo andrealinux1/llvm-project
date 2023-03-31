@@ -798,17 +798,25 @@ public:
     return Result;
   }
 
-  llvm::DenseMap<BlockNode, size_t> getEntryCandidates() {
+  llvm::DenseMap<BlockNode, size_t>
+  getEntryCandidates(RegionNode *ParentRegion) {
 
     // `DenseMap` that will contain all the candidate entries of the current
     // region, with the associated incoming edges degree.
     llvm::DenseMap<BlockNode, size_t> Result;
 
     // We iterate over all the predecessors of a block, if we find a predecessor
-    // not in the current region, we increment the counter of the entry edges.
+    // not in the current region, but which is in the parent region, we
+    // increment the counter of the entry edges.
+    // We need to explicitly look in the parent region only, because in
+    // principle we could have a late entry pointing in a region nested
+    // arbitrarly in other regions. In this way, we outline the iteration only
+    // when the `ParentRegion` is indeed the region from where the late entry
+    // edge is departing from.
     for (BlockNode Block : getAllNestedBlocks()) {
       for (BlockNode Predecessor : predecessor_range(Block)) {
-        if (not containsBlock(Predecessor)) {
+        if (not containsBlock(Predecessor) and
+            ParentRegion->containsBlock(Predecessor)) {
           Result[Block]++;
         }
       }
@@ -819,7 +827,7 @@ public:
 
   llvm::SmallVector<std::pair<BlockNode, BlockNode>>
   getOutlinedEntries(llvm::DenseMap<BlockNode, size_t> &EntryCandidates,
-                     BlockNode Entry) {
+                     BlockNode Entry, RegionNode *ParentRegion) {
     llvm::SmallVector<std::pair<BlockNode, BlockNode>> LateEntryPairs;
     for (const auto &[Other, NumIncoming] : EntryCandidates) {
       if (Other != Entry) {
