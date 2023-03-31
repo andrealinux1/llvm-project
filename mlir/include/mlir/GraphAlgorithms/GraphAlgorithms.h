@@ -745,7 +745,7 @@ public:
     return false;
   }
 
-  bool containsBlock(BlockNode Candidate) {
+  bool containsBlock(const BlockNode Candidate) {
     llvm::SmallVector<RegionNode *> ToAnalyze;
     ToAnalyze.push_back(this);
 
@@ -776,6 +776,28 @@ public:
     return false;
   }
 
+  llvm::SmallVector<BlockNode> getAllNestedBlocks() {
+    llvm::SmallVector<RegionNode *> ToAnalyze;
+    ToAnalyze.push_back(this);
+
+    llvm::SmallVector<BlockNode> Result;
+
+    while (!ToAnalyze.empty()) {
+      RegionNode *LastRegion = ToAnalyze.back();
+      ToAnalyze.pop_back();
+
+      for (BlockNode Element : *LastRegion) {
+        Result.push_back(Element);
+      }
+
+      for (RegionNode *ChildRegion : LastRegion->successor_range()) {
+        ToAnalyze.push_back(ChildRegion);
+      }
+    }
+
+    return Result;
+  }
+
   llvm::DenseMap<BlockNode, size_t> getEntryCandidates() {
 
     // `DenseMap` that will contain all the candidate entries of the current
@@ -784,7 +806,7 @@ public:
 
     // We iterate over all the predecessors of a block, if we find a predecessor
     // not in the current region, we increment the counter of the entry edges.
-    for (BlockNode Block : Nodes) {
+    for (BlockNode Block : getAllNestedBlocks()) {
       for (BlockNode Predecessor : predecessor_range(Block)) {
         if (not containsBlock(Predecessor)) {
           Result[Block]++;

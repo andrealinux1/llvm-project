@@ -190,7 +190,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   bool outlineFirstIteration(
       llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
           &LateEntryPairs,
-      BlockSet &Region, BlockSet &OutlinedNodes, mlir::Block *Entry,
+      RegionNode *Region, BlockSet &OutlinedNodes, mlir::Block *Entry,
       mlir::PatternRewriter &Rewriter) const {
     bool OutlinedCycle = false;
 
@@ -203,8 +203,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // successor is outside of the current set region, do not clone it
       // either, this path will be represented with `goto`s at the current
       // stage.
-      StateType State([&Region, Entry](const mlir::Block *Block) {
-        return Region.contains(Block) && Block != Entry;
+      StateType State([&Region, Entry](mlir::Block *Block) {
+        return Region->containsBlock(Block) && Block != Entry;
       });
 
       BlockSet IterationOutlinedNodes;
@@ -367,8 +367,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       // children regions.
       for (RegionNode *ChildRegion : Region->successor_range()) {
 
-        BlockSet NodesSet = ChildRegion->getBlocksSet();
-
         // We could have two macro-situations here:
         // 1) The entry node is a block node. This is the standard situation,
         //    and we should proceed with the standard analysis.
@@ -396,12 +394,15 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
                 ChildRegion->getOutlinedEntries(EntryCandidates, Entry);
 
         // Print all the outside predecessor.
+        llvm::dbgs() << "\nElected entry node: ";
+        Entry->printAsOperand(llvm::dbgs());
+
         llvm::dbgs() << "\nNon regular entry candidates found:\n";
         printPairVector(LateEntryPairs);
 
         // Outline the first iteration of the cycles.
         BlockSet OutlinedNodes;
-        OutlinedCycle |= outlineFirstIteration(LateEntryPairs, NodesSet,
+        OutlinedCycle |= outlineFirstIteration(LateEntryPairs, ChildRegion,
                                                OutlinedNodes, Entry, Rewriter);
 
         // The outlined nodes must be added to the parent region with respect
