@@ -92,6 +92,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     Block->printAsOperand(llvm::dbgs());
   }
 
+  void
+  printChildRegionDescriptorIndex(ChildRegionDescriptor &ChildRegion) const {
+    llvm::dbgs() << "Subregion ID: " << ChildRegion.ChildIndex << "\n";
+  }
+
   void printBackedge(EdgeDescriptor &Backedge) const {
     llvm::dbgs() << "Backedge: ";
     printBlock(Backedge.first);
@@ -163,7 +168,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
     for (ChildRegionDescriptor &ChildRegion :
          RegionNode.successor_range_naked()) {
-      llvm::dbgs() << "Subregion ID: " << ChildRegion.ChildIndex << "\n";
+      printChildRegionDescriptorIndex(ChildRegion);
     }
   }
 
