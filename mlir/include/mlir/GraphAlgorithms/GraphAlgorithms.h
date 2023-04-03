@@ -570,41 +570,38 @@ private:
 
   RegionTree<NodeT> &OwningRegionTree;
 
-  using getRegionPointerT = RegionNode *(*)(ChildRegionDescriptor &);
-  using getConstRegionPointerT =
-      const RegionNode *(*)(const ChildRegionDescriptor &);
+  using getPointerT = RegionNode *(*)(ChildRegionDescriptor &);
+  using getConstPointerT = const RegionNode *(*)(const ChildRegionDescriptor &);
 
-  static RegionNode *getRegionPointer(ChildRegionDescriptor &Successor) {
-    RegionNode *ChildRegionPointer =
-        &Successor.OwningRegionTree->getRegion(Successor.ChildIndex);
+  static RegionNode *getPointer(ChildRegionDescriptor &Successor) {
+    RegionTree<NodeT> *OwningRegionTree = Successor.OwningRegionTree;
+    size_t ChildIndex = Successor.ChildIndex;
+    RegionNode *ChildRegionPointer = &OwningRegionTree->getRegion(ChildIndex);
     assert(ChildRegionPointer != nullptr);
     return ChildRegionPointer;
   }
 
-  static_assert(std::is_same_v<decltype(&getRegionPointer), getRegionPointerT>);
+  static_assert(std::is_same_v<decltype(&getPointer), getPointerT>);
 
   static const RegionNode *
-  getConstRegionPointer(const ChildRegionDescriptor &Successor) {
-    RegionNode *ChildRegionPointer =
-        Successor.OwningRegionTree->getRegion(Successor.ChildIndex);
+  getConstPointer(const ChildRegionDescriptor &Successor) {
+    RegionTree<NodeT> *OwningRegionTree = Successor.OwningRegionTree;
+    size_t ChildIndex = Successor.ChildIndex;
+    RegionNode *ChildRegionPointer = &OwningRegionTree->getRegion(ChildIndex);
     assert(ChildRegionPointer != nullptr);
     return ChildRegionPointer;
   }
 
-  static_assert(
-      std::is_same_v<decltype(&getConstRegionPointer), getConstRegionPointerT>);
+  static_assert(std::is_same_v<decltype(&getConstPointer), getConstPointerT>);
 
   using succ_container = llvm::SmallVector<ChildRegionDescriptor>;
-  using succ_internal_iterator = typename succ_container::iterator;
-  using succ_internal_const_iterator = typename succ_container::const_iterator;
-  using succ_internal_range = llvm::iterator_range<succ_internal_iterator>;
-  using succ_internal_const_range =
-      llvm::iterator_range<succ_internal_const_iterator>;
-  using succ_iterator =
-      llvm::mapped_iterator<succ_internal_iterator, getRegionPointerT>;
+  using succ_naked_it = typename succ_container::iterator;
+  using succ_naked_const_it = typename succ_container::const_iterator;
+  using succ_naked_range = llvm::iterator_range<succ_naked_it>;
+  using succ_naked_const_range = llvm::iterator_range<succ_naked_const_it>;
+  using succ_iterator = llvm::mapped_iterator<succ_naked_it, getPointerT>;
   using succ_const_iterator =
-      llvm::mapped_iterator<succ_internal_const_iterator,
-                            getConstRegionPointerT>;
+      llvm::mapped_iterator<succ_naked_const_it, getConstPointerT>;
   using succ_range = llvm::iterator_range<succ_iterator>;
   using succ_const_range = llvm::iterator_range<succ_const_iterator>;
 
@@ -648,16 +645,14 @@ public:
     return BlocksSet;
   }
 
-  succ_internal_iterator succ_begin_naked() { return Children.begin(); }
-  succ_internal_iterator succ_end_naked() { return Children.end(); }
-  succ_internal_const_iterator succ_const_begin_naked() {
-    return Children.begin();
-  }
-  succ_internal_const_iterator succ_const_end_naked() { return Children.end(); }
-  succ_internal_range successor_range_naked() {
+  succ_naked_it succ_begin_naked() { return Children.begin(); }
+  succ_naked_it succ_end_naked() { return Children.end(); }
+  succ_naked_const_it succ_const_begin_naked() { return Children.begin(); }
+  succ_naked_const_it succ_const_end_naked() { return Children.end(); }
+  succ_naked_range successor_range_naked() {
     return llvm::make_range(succ_begin_naked(), succ_end_naked());
   }
-  succ_internal_const_range successor_const_range_naked() {
+  succ_naked_const_range successor_const_range_naked() {
     return llvm::make_range(succ_const_begin_naked(), succ_const_end_naked());
   }
 
@@ -690,16 +685,16 @@ public:
   }
 
   succ_iterator succ_begin() {
-    return llvm::map_iterator(Children.begin(), getRegionPointer);
+    return llvm::map_iterator(Children.begin(), getPointer);
   }
   succ_const_iterator succ_const_begin() const {
-    return llvm::map_iterator(Children.begin(), getConstRegionPointer);
+    return llvm::map_iterator(Children.begin(), getConstPointer);
   }
   succ_iterator succ_end() {
-    return llvm::map_iterator(Children.end(), getRegionPointer);
+    return llvm::map_iterator(Children.end(), getPointer);
   }
   succ_const_iterator succ_const_end() const {
-    return llvm::map_iterator(Children.end(), getConstRegionPointer);
+    return llvm::map_iterator(Children.end(), getConstPointer);
   }
   succ_range successor_range() {
     return llvm::make_range(succ_begin(), succ_end());
@@ -867,16 +862,14 @@ class RegionTree {
 
 public:
   using links_container = llvm::SmallVector<RegionVector>;
-  using links_iterator = typename links_container::iterator;
-  using links_const_iterator = typename links_container::const_iterator;
-  using links_reverse_iterator = typename links_container::reverse_iterator;
-  using links_const_reverse_iterator =
-      typename links_container::const_reverse_iterator;
-  using links_range = llvm::iterator_range<links_iterator>;
-  using links_reverse_range = llvm::iterator_range<links_reverse_iterator>;
-  using links_const_range = llvm::iterator_range<links_const_iterator>;
-  using links_const_reverse_range =
-      llvm::iterator_range<links_const_reverse_iterator>;
+  using links_it = typename links_container::iterator;
+  using links_const_it = typename links_container::const_iterator;
+  using links_rev_it = typename links_container::reverse_iterator;
+  using links_const_rev_it = typename links_container::const_reverse_iterator;
+  using links_range = llvm::iterator_range<links_it>;
+  using links_rev_range = llvm::iterator_range<links_rev_it>;
+  using links_const_range = llvm::iterator_range<links_const_it>;
+  using links_const_rev_range = llvm::iterator_range<links_const_rev_it>;
 
 private:
   links_container Regions;
@@ -892,21 +885,21 @@ public:
 
   RegionVector &front() { return Regions.front(); }
 
-  links_iterator begin() { return Regions.begin(); }
-  links_const_iterator begin() const { return Regions.begin(); }
-  links_iterator end() { return Regions.end(); }
-  links_const_iterator end() const { return Regions.end(); }
+  links_it begin() { return Regions.begin(); }
+  links_const_it begin() const { return Regions.begin(); }
+  links_it end() { return Regions.end(); }
+  links_const_it end() const { return Regions.end(); }
   links_range regions() { return llvm::make_range(begin(), end()); }
   links_const_range regions() const { return llvm::make_range(begin(), end()); }
 
-  links_reverse_iterator rbegin() { return Regions.rbegin(); }
-  links_const_reverse_iterator rbegin() const { return Regions.rbegin(); }
-  links_reverse_iterator rend() { return Regions.rend(); }
-  links_const_reverse_iterator rend() const { return Regions.rend(); }
-  links_reverse_range reverseRegions() {
+  links_rev_it rbegin() { return Regions.rbegin(); }
+  links_const_rev_it rbegin() const { return Regions.rbegin(); }
+  links_rev_it rend() { return Regions.rend(); }
+  links_const_rev_it rend() const { return Regions.rend(); }
+  links_rev_range reverseRegions() {
     return llvm::make_range(rbegin(), rend());
   }
-  links_const_reverse_range reverseRegions() const {
+  links_const_rev_range reverseRegions() const {
     return llvm::make_range(rbegin(), rend());
   }
 
@@ -978,7 +971,7 @@ public:
     // TODO: We may want to soft fail in this situation, if we allow to query
     //       the data structure with no assurance that the intended region is
     //       present.
-    assert(false);
+    std::abort();
   }
 
   // TODO: we need this method because we cannot have `std::optional` with

@@ -43,8 +43,7 @@ struct GraphTraits<revng::detail::RegionTree<mlir::Block *> *>
 
   static NodeRef getEntryNode(GraphType Rt) { return &Rt->front(); }
 
-  using nodes_iterator =
-      revng::detail::RegionTree<mlir::Block *>::links_iterator;
+  using nodes_iterator = revng::detail::RegionTree<mlir::Block *>::links_it;
   static nodes_iterator nodes_begin(GraphType Rt) {
     return nodes_iterator(Rt->begin());
   }
