@@ -677,6 +677,18 @@ public:
     return std::nullopt;
   }
 
+  std::variant<NodeT, ChildRegionDescriptor *> getEntry() {
+    assert(EntryState != Invalid);
+    if (EntryState == NodesVector) {
+      assert(!Nodes.empty());
+      return Nodes[0];
+    } else if (EntryState == ChildrenVector) {
+      assert(!Children.empty());
+      return &Children[0];
+    }
+    __builtin_unreachable();
+  }
+
   succ_iterator succ_begin() {
     return llvm::map_iterator(Children.begin(), getRegionPointer);
   }

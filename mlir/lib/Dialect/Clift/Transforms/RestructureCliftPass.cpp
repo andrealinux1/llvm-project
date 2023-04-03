@@ -97,6 +97,18 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     llvm::dbgs() << "Subregion ID: " << ChildRegion.ChildIndex << "\n";
   }
 
+  void printBlockOrIndex(
+      const std::variant<mlir::Block *, ChildRegionDescriptor *> &Node) const {
+    if (std::holds_alternative<mlir::Block *>(Node)) {
+      mlir::Block *Block = std::get<mlir::Block *>(Node);
+      printBlock(Block);
+    } else if (std::holds_alternative<ChildRegionDescriptor *>(Node)) {
+      ChildRegionDescriptor *ChildRegion =
+          std::get<ChildRegionDescriptor *>(Node);
+      printChildRegionDescriptorIndex(*ChildRegion);
+    }
+  }
+
   void printBackedge(EdgeDescriptor &Backedge) const {
     llvm::dbgs() << "Backedge: ";
     printBlock(Backedge.first);
@@ -404,7 +416,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         // Print all the outside predecessor.
         llvm::dbgs() << "\nElected entry node: ";
-        Entry->printAsOperand(llvm::dbgs());
+        printBlockOrIndex(ChildRegion->getEntry());
 
         llvm::dbgs() << "\nNon regular entry candidates found:\n";
         printPairVector(LateEntryPairs);
