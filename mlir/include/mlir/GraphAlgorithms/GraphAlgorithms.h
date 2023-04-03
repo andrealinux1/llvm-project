@@ -903,10 +903,10 @@ public:
   links_const_reverse_iterator rbegin() const { return Regions.rbegin(); }
   links_reverse_iterator rend() { return Regions.rend(); }
   links_const_reverse_iterator rend() const { return Regions.rend(); }
-  links_reverse_range reverse_regions() {
+  links_reverse_range reverseRegions() {
     return llvm::make_range(rbegin(), rend());
   }
-  links_const_reverse_range reverse_regions() const {
+  links_const_reverse_range reverseRegions() const {
     return llvm::make_range(rbegin(), rend());
   }
 
