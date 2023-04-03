@@ -853,9 +853,6 @@ public:
   }
 };
 
-// TODO: double check how to implement the variant with the fact that we want to
-// accept a template argument for the node type, but have an index at the same
-// time.
 template <class NodeT>
 class RegionTree {
   using RegionVector = RegionNode<NodeT>;
@@ -908,10 +905,6 @@ public:
 
 using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
 
-// TODO: this data structure will be responsible of handling the child/parent
-//       relationship of identified regions. We now implemented this with
-//       keeping indexes on the underlying vector around, but in future we may
-//       want to move the ownership inside and expose `GraphTraits`.
 template <class NodeT>
 class ParentTree {
   using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
