@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Clift/IR/CliftAttributes.h"
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
 #include "mlir/Dialect/Clift/IR/CliftTypes.h"
+#include "mlir/Dialect/Clift/IR/RegionTreeGraphTraits.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
