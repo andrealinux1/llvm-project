@@ -921,9 +921,6 @@ private:
   links_container Rs;
   llvm::DenseMap<std::ptrdiff_t, bool> IsRootRegionMap;
   llvm::DenseMap<std::ptrdiff_t, NodeT> EntryMap;
-
-  // TODO: this field is not used, implement the check that any query to the
-  // data structure find it in a ready state.
   bool ReadyState = false;
 
 private:
@@ -941,19 +938,6 @@ private:
     }
   }
 
-public:
-  ParentTree() = default;
-
-  void clear() {
-    Map.clear();
-    Rs.clear();
-    IsRootRegionMap.clear();
-    EntryMap.clear();
-    ReadyState = false;
-  }
-
-  links_container &getRegions() { return Rs; }
-
   std::ptrdiff_t getRegionIndex(RegionSet &Region) {
     for (auto RegionIt = Rs.begin(); RegionIt != Rs.end(); RegionIt++) {
       if (*RegionIt == Region) {
@@ -966,38 +950,6 @@ public:
     //       present.
     std::abort();
   }
-
-  // TODO: we need this method because we cannot have `std::optional` with
-  //       references.
-  bool hasParent(RegionSet &Child) {
-    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
-    auto MapIt = Map.find(ChildIndex);
-    return MapIt != Map.end();
-  }
-
-  RegionSet &getParent(RegionSet &Child) {
-    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
-    auto MapIt = Map.find(ChildIndex);
-    assert(MapIt != Map.end());
-    std::ptrdiff_t ParentIndex = MapIt->second;
-    RegionSet &Parent = getRegionFromIndex(ParentIndex);
-    return Parent;
-  }
-
-  void insertRegion(RegionSet &Region) { Rs.emplace_back(std::move(Region)); }
-
-  void order() {
-    computeParents();
-    computePartialOrder();
-    computeParents();
-  }
-
-  links_iterator begin() { return Rs.begin(); }
-  links_const_iterator begin() const { return Rs.begin(); }
-  links_iterator end() { return Rs.end(); }
-  links_const_iterator end() const { return Rs.end(); }
-  links_range regions() { return llvm::make_range(begin(), end()); }
-  links_const_range regions() const { return llvm::make_range(begin(), end()); }
 
   void computePartialOrder() {
     links_container OrderedRegions;
@@ -1031,12 +983,76 @@ public:
     Rs.swap(OrderedRegions);
   }
 
+  links_iterator begin() { return Rs.begin(); }
+  links_const_iterator begin() const { return Rs.begin(); }
+  links_iterator end() { return Rs.end(); }
+  links_const_iterator end() const { return Rs.end(); }
+
+public:
+  ParentTree() = default;
+
+  void clear() {
+    Map.clear();
+    Rs.clear();
+    IsRootRegionMap.clear();
+    EntryMap.clear();
+    ReadyState = false;
+  }
+
+  links_container &getRegions() {
+    assert(ReadyState);
+    return Rs;
+  }
+
+  // TODO: we need this method because we cannot have `std::optional` with
+  //       references, and therefore we need a method to check that the
+  //       `getParent` will not fail (not being possible to return an
+  //       `optional`, and checking the results user side).
+  bool hasParent(RegionSet &Child) {
+    assert(ReadyState);
+    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
+    auto MapIt = Map.find(ChildIndex);
+    return MapIt != Map.end();
+  }
+
+  RegionSet &getParent(RegionSet &Child) {
+    std::ptrdiff_t ChildIndex = getRegionIndex(Child);
+    auto MapIt = Map.find(ChildIndex);
+    assert(MapIt != Map.end());
+    std::ptrdiff_t ParentIndex = MapIt->second;
+    RegionSet &Parent = getRegionFromIndex(ParentIndex);
+    return Parent;
+  }
+
+  void insertRegion(RegionSet &Region) { Rs.emplace_back(std::move(Region)); }
+
+  void order() {
+    computeParents();
+    computePartialOrder();
+    computeParents();
+
+    // Flag the `ParentTree` as ready to use, so we do not use incidentally
+    // before it has been order and it is considered ready to use.
+    ReadyState = true;
+  }
+
+  links_range regions() {
+    assert(ReadyState);
+    return llvm::make_range(begin(), end());
+  }
+  links_const_range regions() const {
+    assert(ReadyState);
+    return llvm::make_range(begin(), end());
+  }
+
   void setRegionRoot(RegionSet &Region, bool Value) {
+    assert(ReadyState);
     std::ptrdiff_t RegionIndex = getRegionIndex(Region);
     IsRootRegionMap[RegionIndex] = Value;
   }
 
   bool isRegionRoot(RegionSet &Region) {
+    assert(ReadyState);
     std::ptrdiff_t RegionIndex = getRegionIndex(Region);
     auto MapIt = IsRootRegionMap.find(RegionIndex);
     assert(MapIt != IsRootRegionMap.end());
@@ -1044,11 +1060,13 @@ public:
   }
 
   void setRegionEntry(RegionSet &Region, NodeT Entry) {
+    assert(ReadyState);
     std::ptrdiff_t RegionIndex = getRegionIndex(Region);
     EntryMap[RegionIndex] = Entry;
   }
 
   NodeT getRegionEntry(RegionSet &Region) {
+    assert(ReadyState);
     std::ptrdiff_t RegionIndex = getRegionIndex(Region);
     auto MapIt = EntryMap.find(RegionIndex);
     assert(MapIt != EntryMap.end());

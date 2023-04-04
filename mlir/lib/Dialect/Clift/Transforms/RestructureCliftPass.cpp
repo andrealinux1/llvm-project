@@ -75,8 +75,6 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   mlir::LogicalResult
   matchAndRewrite(LLVM::LLVMFuncOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
-    // llvm::dbgs() << "Invoking matchAndRewrite on " << "\n";
-    // op->dump();
 
     // Ensure that we start from a `LLVMFuncOp` with a single `cf` region.
     assert(Op->getNumRegions() == 1);
@@ -308,7 +306,42 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void initializeParentTree(ParentTree &Pt, RegionTree &Rt) const {
+  void electRegionEntry(ParentTree &Pt, mlir::Region &FunctionRegion,
+                        BlockSetVect &Regions) const {
+    // Compute the Reverse Post Order.
+    llvm::SmallVector<mlir::Block *> RPOT;
+    using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
+    llvm::copy(RPOTraversal(&FunctionRegion), std::back_inserter(RPOT));
+
+    // Compute the distance of each node from the entry node.
+    llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
+        computeDistanceFromEntry(&FunctionRegion);
+
+    // The following routine pre-computes the entry block of each region.
+    size_t RegionIndex = 0;
+    for (BlockSet &Region : Pt.regions()) {
+      llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+          getEntryCandidates<mlir::Block *>(Region);
+
+      // In case we are analyzing the root region, we expect to have no entry
+      // candidates.
+      bool RootRegionIteration = (RegionIndex + 1) == Regions.size();
+      Pt.setRegionRoot(Region, RootRegionIteration);
+      assert(!EntryCandidates.empty() || RootRegionIteration);
+      assert(!RootRegionIteration || EntryCandidates.empty());
+      if (RootRegionIteration) {
+        assert(EntryCandidates.empty());
+        EntryCandidates.insert({RPOT.front(), 0});
+      }
+
+      mlir::Block *Entry = electEntry<mlir::Block *>(
+          EntryCandidates, ShortestPathFromEntry, RPOT);
+      Pt.setRegionEntry(Region, Entry);
+      RegionIndex++;
+    }
+  }
+
+  void initializeRegionTree(ParentTree &Pt, RegionTree &Rt) const {
     // Transpile the already ordered regions into a `RegionTree`.
     size_t RegionIndex = 0;
     std::map<BlockSet *, size_t> RegionIDMap;
@@ -443,8 +476,11 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
                                    mlir::PatternRewriter &Rewriter,
                                    RegionTree &Rt) const {
 
-    // TODO: Remove this `ParentTree`. It is now kept to simplify the transition
-    // from `ParentTree` to `RegionTree` usage.
+    // The `ParentTree` class is used as a temporary mean for creating the
+    // hierarchy of regions. As soon the hierarchy is defined, we transpile it
+    // into a `ParentTree` object, which is the main driver used for each
+    // analysis from now on (e.g., first iteration outlining, region
+    // identification).
     ParentTree Pt;
 
     // Region identification and first iteration outlining in a fixed point
@@ -500,48 +536,18 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
       }
 
       // Order the regions inside the `ParentTree`. This invokes region
-      // reordering
+      // reordering.
       Pt.order();
 
-      // Order the regions so that they go from the outer one to the inner one.
+      // Print the regions after the reordering.
       llvm::dbgs() << "\nAfter ordering:\n";
       printRegions(Pt.getRegions());
 
-      // New Impl. starting here.
-      // Compute the Reverse Post Order.
-      llvm::SmallVector<mlir::Block *> RPOT;
-      using RPOTraversal = llvm::ReversePostOrderTraversal<mlir::Region *>;
-      llvm::copy(RPOTraversal(&FunctionRegion), std::back_inserter(RPOT));
-
-      // Compute the distance of each node from the entry node.
-      llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
-          computeDistanceFromEntry(&FunctionRegion);
-
-      // The following routine pre-computes the entry block of each region.
-      size_t RegionIndex = 0;
-      for (BlockSet &Region : Pt.regions()) {
-        llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
-            getEntryCandidates<mlir::Block *>(Region);
-
-        // In case we are analyzing the root region, we expect to have no entry
-        // candidates.
-        bool RootRegionIteration = (RegionIndex + 1) == Regions.size();
-        Pt.setRegionRoot(Region, RootRegionIteration);
-        assert(!EntryCandidates.empty() || RootRegionIteration);
-        assert(!RootRegionIteration || EntryCandidates.empty());
-        if (RootRegionIteration) {
-          assert(EntryCandidates.empty());
-          EntryCandidates.insert({RPOT.front(), 0});
-        }
-
-        mlir::Block *Entry = electEntry<mlir::Block *>(
-            EntryCandidates, ShortestPathFromEntry, RPOT);
-        Pt.setRegionEntry(Region, Entry);
-        RegionIndex++;
-      }
+      // Elect the preliminary entry node for each region.
+      electRegionEntry(Pt, FunctionRegion, Regions);
 
       // Initialize the `RegionTree` object.
-      initializeParentTree(Pt, Rt);
+      initializeRegionTree(Pt, Rt);
 
       // Output as debug the `RegionTree` structure.
       printRegionTree(Rt);
