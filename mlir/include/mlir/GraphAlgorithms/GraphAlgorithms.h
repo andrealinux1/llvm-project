@@ -16,6 +16,7 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 
@@ -276,37 +277,24 @@ nodesBetweenReverse(GraphT Source, GraphT Destination,
 template <class NodeT>
 bool intersect(llvm::SmallPtrSet<NodeT, 4> &First,
                llvm::SmallPtrSet<NodeT, 4> &Second) {
-
-  std::set<NodeT> FirstSet;
-  std::set<NodeT> SecondSet;
-  FirstSet.insert(First.begin(), First.end());
-  SecondSet.insert(Second.begin(), Second.end());
-
-  llvm::SmallVector<NodeT> Intersection;
-  std::set_intersection(FirstSet.begin(), FirstSet.end(), SecondSet.begin(),
-                        SecondSet.end(), std::back_inserter(Intersection));
+  // TODO: Upon migration to LLVM 17, we should use the `llvm::set_intersection`
+  // provided in `SetOperations.h` header file.
+  llvm::SmallPtrSet<NodeT, 4> Intersection(First.begin(), First.end());
+  llvm::set_intersect(Intersection, Second);
   return !Intersection.empty();
 }
 
 template <class NodeT>
 bool subset(llvm::SmallPtrSet<NodeT, 4> &Contained,
             llvm::SmallPtrSet<NodeT, 4> &Containing) {
-  std::set<NodeT> ContainedSet;
-  std::set<NodeT> ContainingSet;
-  ContainedSet.insert(Contained.begin(), Contained.end());
-  ContainingSet.insert(Containing.begin(), Containing.end());
-  return std::includes(ContainingSet.begin(), ContainingSet.end(),
-                       ContainedSet.begin(), ContainedSet.end());
+  return llvm::set_is_subset(Contained, Containing);
 }
 
 template <class NodeT>
 bool equal(llvm::SmallPtrSet<NodeT, 4> &First,
            llvm::SmallPtrSet<NodeT, 4> &Second) {
-  std::set<NodeT> FirstSet;
-  std::set<NodeT> SecondSet;
-  FirstSet.insert(First.begin(), First.end());
-  SecondSet.insert(Second.begin(), Second.end());
-  return FirstSet == SecondSet;
+  return llvm::set_is_subset(First, Second) and
+         llvm::set_is_subset(Second, First);
 }
 
 template <class NodeT>
