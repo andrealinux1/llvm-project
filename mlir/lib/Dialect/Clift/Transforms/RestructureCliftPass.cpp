@@ -58,8 +58,8 @@ namespace {
 
 class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
-  using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
-  using BlockSet = llvm::SmallPtrSet<mlir::Block *, 4>;
+  using EdgeSet = llvm::SmallSetVector<EdgeDescriptor, 4>;
+  using BlockSet = llvm::SmallSetVector<mlir::Block *, 4>;
   using BlockSetVect = llvm::SmallVector<BlockSet>;
   using BlockIntMap = llvm::DenseMap<mlir::Block *, size_t>;
   using BlockVect = llvm::SmallVector<mlir::Block *>;
