@@ -320,7 +320,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     // The following routine pre-computes the entry block of each region.
     size_t RegionIndex = 0;
     for (BlockSet &Region : Pt.regions()) {
-      llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+      llvm::MapVector<mlir::Block *, size_t> EntryCandidates =
           getEntryCandidates<mlir::Block *>(Region);
 
       // In case we are analyzing the root region, we expect to have no entry
@@ -441,7 +441,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         std::optional<mlir::Block *> EntryOpt = ChildRegion->getEntryIfBlock();
         mlir::Block *Entry = EntryOpt.value_or(nullptr);
 
-        llvm::DenseMap<mlir::Block *, size_t> EntryCandidates =
+        llvm::MapVector<mlir::Block *, size_t> EntryCandidates =
             ChildRegion->getEntryCandidates(ParentRegion);
 
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>

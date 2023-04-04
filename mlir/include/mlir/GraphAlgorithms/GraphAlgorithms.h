@@ -13,6 +13,7 @@
 #include "llvm/ADT/BreadthFirstIterator.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/GraphTraits.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
@@ -388,12 +389,12 @@ auto predecessor_range(GraphT Block) {
 }
 
 template <class NodeRef>
-llvm::DenseMap<NodeRef, size_t>
+llvm::MapVector<NodeRef, size_t>
 getEntryCandidates(llvm::SmallSetVector<NodeRef, 4> &Region) {
 
   // `DenseMap` that will contain all the candidate entries of a region, with
   // the associated incoming edges degree.
-  llvm::DenseMap<NodeRef, size_t> Result;
+  llvm::MapVector<NodeRef, size_t> Result;
 
   // We can iterate over all the predecessors of a block, if we find a pred not
   // in the current set, we increment the counter of the entry edges.
@@ -416,7 +417,7 @@ size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) {
 }
 
 template <class NodeT>
-NodeT electEntry(llvm::DenseMap<NodeT, size_t> &EntryCandidates,
+NodeT electEntry(llvm::MapVector<NodeT, size_t> &EntryCandidates,
                  llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
                  llvm::SmallVectorImpl<NodeT> &RPOT) {
   // Elect the Entry as the the candidate entry with the largest number of
@@ -795,12 +796,12 @@ public:
     return Result;
   }
 
-  llvm::DenseMap<BlockNode, size_t>
+  llvm::MapVector<BlockNode, size_t>
   getEntryCandidates(RegionNode *ParentRegion) {
 
     // `DenseMap` that will contain all the candidate entries of the current
     // region, with the associated incoming edges degree.
-    llvm::DenseMap<BlockNode, size_t> Result;
+    llvm::MapVector<BlockNode, size_t> Result;
 
     // We iterate over all the predecessors of a block, if we find a predecessor
     // not in the current region, but which is in the parent region, we
@@ -823,7 +824,7 @@ public:
   }
 
   llvm::SmallVector<std::pair<BlockNode, BlockNode>>
-  getOutlinedEntries(llvm::DenseMap<BlockNode, size_t> &EntryCandidates,
+  getOutlinedEntries(llvm::MapVector<BlockNode, size_t> &EntryCandidates,
                      BlockNode Entry, RegionNode *ParentRegion) {
     llvm::SmallVector<std::pair<BlockNode, BlockNode>> LateEntryPairs;
     for (const auto &[Other, NumIncoming] : EntryCandidates) {
