@@ -27,7 +27,7 @@
 namespace revng::detail {
 
 template <class NodeT>
-using StatusMap = llvm::DenseMap<NodeT, bool>;
+using StatusMap = llvm::MapVector<NodeT, bool>;
 
 template <class NodeT>
 using EdgeDescriptor = std::pair<NodeT, NodeT>;
@@ -392,7 +392,7 @@ template <class NodeRef>
 llvm::MapVector<NodeRef, size_t>
 getEntryCandidates(llvm::SmallSetVector<NodeRef, 4> &Region) {
 
-  // `DenseMap` that will contain all the candidate entries of a region, with
+  // `MapVector` that will contain all the candidate entries of a region, with
   // the associated incoming edges degree.
   llvm::MapVector<NodeRef, size_t> Result;
 
@@ -459,7 +459,7 @@ NodeT electEntry(llvm::MapVector<NodeT, size_t> &EntryCandidates,
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getOutlinedEntries(llvm::DenseMap<NodeRef, size_t> &EntryCandidates,
+getOutlinedEntries(llvm::MapVector<NodeRef, size_t> &EntryCandidates,
                    llvm::SmallSetVector<NodeRef, 4> &Region, NodeRef Entry) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
   for (const auto &[Other, NumIncoming] : EntryCandidates) {
@@ -799,7 +799,7 @@ public:
   llvm::MapVector<BlockNode, size_t>
   getEntryCandidates(RegionNode *ParentRegion) {
 
-    // `DenseMap` that will contain all the candidate entries of the current
+    // `MapVector` that will contain all the candidate entries of the current
     // region, with the associated incoming edges degree.
     llvm::MapVector<BlockNode, size_t> Result;
 
