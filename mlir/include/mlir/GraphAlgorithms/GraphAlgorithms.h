@@ -24,6 +24,11 @@
 
 #include "mlir/IR/BlockSupport.h"
 
+// `llvm::Small` definitions to centralize common small containers size
+// definition.
+template <typename T>
+using SmallSetVector = llvm::SmallSetVector<T, 4>;
+
 namespace revng::detail {
 
 template <class NodeT>
@@ -63,7 +68,7 @@ class DFSBackedgeState : public DFState<NodeT> {
 
 private:
   NodeT CurrentNode = nullptr;
-  llvm::SmallSetVector<EdgeDescriptor, 4> Backedges;
+  SmallSetVector<EdgeDescriptor> Backedges;
   const std::function<bool(const NodeT)> &IsValid;
 
 public:
@@ -74,7 +79,7 @@ public:
   void insertBackedge(NodeT Source, NodeT Target) {
     Backedges.insert(std::make_pair(Source, Target));
   }
-  llvm::SmallSetVector<EdgeDescriptor, 4> getBackedges() { return Backedges; }
+  SmallSetVector<EdgeDescriptor> getBackedges() { return Backedges; }
   std::pair<typename StatusMap::iterator, bool> insert(NodeT Block) {
 
     // If we are trying to insert an invalid block, add it as not on the stack
@@ -100,8 +105,8 @@ class DFSReachableState : public DFState<NodeT> {
 private:
   // Set which contains the desired targets nodes marked as reachable during
   // the visit.
-  llvm::SmallSetVector<NodeT, 4> Targets;
-  llvm::DenseMap<NodeT, llvm::SmallSetVector<NodeT, 4>> AdditionalNodes;
+  SmallSetVector<NodeT> Targets;
+  llvm::DenseMap<NodeT, SmallSetVector<NodeT>> AdditionalNodes;
   NodeT Source = nullptr;
   NodeT Target = nullptr;
   bool FirstInvocation = true;
@@ -116,9 +121,9 @@ public:
   // Assign the `Target` node.
   void assignTarget(NodeT Block) { Target = Block; }
 
-  llvm::SmallSetVector<NodeT, 4> getReachables() { return Targets; }
+  SmallSetVector<NodeT> getReachables() { return Targets; }
 
-  llvm::SmallSetVector<NodeT, 4> &getAdditional(NodeT Block) {
+  SmallSetVector<NodeT> &getAdditional(NodeT Block) {
     return AdditionalNodes[Block];
   }
 
@@ -153,7 +158,7 @@ public:
     // When we encounter a loop, we add to the additional set of nodes the
     // nodes that are onStack, for later additional post-processing.
     if (DFState<NodeT>::onStack(Block)) {
-      llvm::SmallSetVector<NodeT, 4> &AdditionalSet = AdditionalNodes[Block];
+      SmallSetVector<NodeT> &AdditionalSet = AdditionalNodes[Block];
       for (auto const &[K, V] : *this) {
         if (V) {
           AdditionalSet.insert(K);
@@ -169,7 +174,7 @@ public:
 } // namespace revng::detail
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
-llvm::SmallSetVector<revng::detail::EdgeDescriptor<typename GT::NodeRef>, 4>
+SmallSetVector<revng::detail::EdgeDescriptor<typename GT::NodeRef>>
 getBackedges(GraphT Block,
              const std::function<bool(const typename GT::NodeRef)> &IsValid) {
   using NodeRef = typename GT::NodeRef;
@@ -194,15 +199,15 @@ getBackedges(GraphT Block,
 }
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
-llvm::SmallSetVector<revng::detail::EdgeDescriptor<typename GT::NodeRef>, 4>
+SmallSetVector<revng::detail::EdgeDescriptor<typename GT::NodeRef>>
 getBackedges(GraphT Block) {
   return getBackedges(Block, [](const typename GT::NodeRef B) { return true; });
 }
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>>
-llvm::SmallSetVector<typename GT::NodeRef, 4>
+SmallSetVector<typename GT::NodeRef>
 nodesBetweenImpl(GraphT Source, GraphT Target,
-                 const llvm::SmallSetVector<GraphT, 4> *IgnoreList = nullptr) {
+                 const SmallSetVector<GraphT> *IgnoreList = nullptr) {
   using NodeRef = typename GT::NodeRef;
   using StateType = revng::detail::DFSReachableState<NodeRef>;
   StateType State;
@@ -234,7 +239,7 @@ nodesBetweenImpl(GraphT Source, GraphT Target,
 
   auto Targets = State.getReachables();
   // Add in a fixed point fashion the additional nodes.
-  llvm::SmallSetVector<NodeRef, 4> OldTargets;
+  SmallSetVector<NodeRef> OldTargets;
   do {
     // At each iteration obtain a copy of the old set, so that we are able to
     // exit from the loop as soon no change is made to the `Targets` set.
@@ -243,11 +248,10 @@ nodesBetweenImpl(GraphT Source, GraphT Target,
 
     // Temporary storage for the nodes to add at each iteration, to avoid
     // invalidation on the `Targets` set.
-    llvm::SmallSetVector<NodeRef, 4> NodesToAdd;
+    SmallSetVector<NodeRef> NodesToAdd;
 
     for (NodeRef Block : Targets) {
-      llvm::SmallSetVector<NodeRef, 4> &AdditionalSet =
-          State.getAdditional(Block);
+      SmallSetVector<NodeRef> &AdditionalSet = State.getAdditional(Block);
       NodesToAdd.insert(AdditionalSet.begin(), AdditionalSet.end());
     }
 
@@ -261,25 +265,24 @@ nodesBetweenImpl(GraphT Source, GraphT Target,
 }
 
 template <class GraphT>
-inline llvm::SmallSetVector<GraphT, 4>
+inline SmallSetVector<GraphT>
 nodesBetween(GraphT Source, GraphT Destination,
-             const llvm::SmallSetVector<GraphT, 4> *IgnoreList = nullptr) {
+             const SmallSetVector<GraphT> *IgnoreList = nullptr) {
   return nodesBetweenImpl<GraphT, llvm::GraphTraits<GraphT>>(
       Source, Destination, IgnoreList);
 }
 
 template <class GraphT>
-inline llvm::SmallSetVector<GraphT, 4> nodesBetweenReverse(
-    GraphT Source, GraphT Destination,
-    const llvm::SmallSetVector<GraphT, 4> *IgnoreList = nullptr) {
+inline SmallSetVector<GraphT>
+nodesBetweenReverse(GraphT Source, GraphT Destination,
+                    const SmallSetVector<GraphT> *IgnoreList = nullptr) {
   using namespace llvm;
   return nodesBetweenImpl<GraphT, GraphTraits<Inverse<GraphT>>>(
       Source, Destination, IgnoreList);
 }
 
 template <class NodeT>
-bool intersect(llvm::SmallSetVector<NodeT, 4> &First,
-               llvm::SmallSetVector<NodeT, 4> &Second) {
+bool intersect(SmallSetVector<NodeT> &First, SmallSetVector<NodeT> &Second) {
   // TODO: Upon migration to LLVM 17, we should use the `llvm::set_intersection`
   // provided in `SetOperations.h` header file.
   llvm::SmallPtrSet<NodeT, 4> Intersection(First.begin(), First.end());
@@ -288,20 +291,19 @@ bool intersect(llvm::SmallSetVector<NodeT, 4> &First,
 }
 
 template <class NodeT>
-bool subset(llvm::SmallSetVector<NodeT, 4> &Contained,
-            llvm::SmallSetVector<NodeT, 4> &Containing) {
+bool subset(SmallSetVector<NodeT> &Contained,
+            SmallSetVector<NodeT> &Containing) {
   return llvm::set_is_subset(Contained, Containing);
 }
 
 template <class NodeT>
-bool equal(llvm::SmallSetVector<NodeT, 4> &First,
-           llvm::SmallSetVector<NodeT, 4> &Second) {
+bool equal(SmallSetVector<NodeT> &First, SmallSetVector<NodeT> &Second) {
   return llvm::set_is_subset(First, Second) and
          llvm::set_is_subset(Second, First);
 }
 
 template <class NodeT>
-bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallSetVector<NodeT, 4>> &R) {
+bool simplifyRegionsStep(llvm::SmallVector<SmallSetVector<NodeT>> &R) {
   for (auto RegionIt1 = R.begin(); RegionIt1 != R.end(); RegionIt1++) {
     for (auto RegionIt2 = std::next(RegionIt1); RegionIt2 != R.end();
          RegionIt2++) {
@@ -322,7 +324,7 @@ bool simplifyRegionsStep(llvm::SmallVector<llvm::SmallSetVector<NodeT, 4>> &R) {
 }
 
 template <class NodeT>
-void simplifyRegions(llvm::SmallVector<llvm::SmallSetVector<NodeT, 4>> &Rs) {
+void simplifyRegions(llvm::SmallVector<SmallSetVector<NodeT>> &Rs) {
   bool Changes = true;
   while (Changes) {
     Changes = simplifyRegionsStep(Rs);
@@ -332,10 +334,9 @@ void simplifyRegions(llvm::SmallVector<llvm::SmallSetVector<NodeT, 4>> &Rs) {
 // Reorder the vector containing the regions so that they are in increasing size
 // order.
 template <class NodeT>
-void sortRegions(llvm::SmallVector<llvm::SmallSetVector<NodeT, 4>> &Rs) {
+void sortRegions(llvm::SmallVector<SmallSetVector<NodeT>> &Rs) {
   std::sort(Rs.begin(), Rs.end(),
-            [](llvm::SmallSetVector<NodeT, 4> &First,
-               llvm::SmallSetVector<NodeT, 4> &Second) {
+            [](SmallSetVector<NodeT> &First, SmallSetVector<NodeT> &Second) {
               return First.size() < Second.size();
             });
 }
@@ -369,7 +370,7 @@ llvm::DenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
 }
 
 template <class NodeT>
-bool setContains(llvm::SmallSetVector<NodeT, 4> &Set, NodeT &Element) {
+bool setContains(SmallSetVector<NodeT> &Set, NodeT &Element) {
   return Set.contains(Element);
 }
 
@@ -390,7 +391,7 @@ auto predecessor_range(GraphT Block) {
 
 template <class NodeRef>
 llvm::MapVector<NodeRef, size_t>
-getEntryCandidates(llvm::SmallSetVector<NodeRef, 4> &Region) {
+getEntryCandidates(SmallSetVector<NodeRef> &Region) {
 
   // `MapVector` that will contain all the candidate entries of a region, with
   // the associated incoming edges degree.
@@ -460,7 +461,7 @@ NodeT electEntry(llvm::MapVector<NodeT, size_t> &EntryCandidates,
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
 getOutlinedEntries(llvm::MapVector<NodeRef, size_t> &EntryCandidates,
-                   llvm::SmallSetVector<NodeRef, 4> &Region, NodeRef Entry) {
+                   SmallSetVector<NodeRef> &Region, NodeRef Entry) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
   for (const auto &[Other, NumIncoming] : EntryCandidates) {
     if (Other != Entry) {
@@ -480,7 +481,7 @@ getOutlinedEntries(llvm::MapVector<NodeRef, size_t> &EntryCandidates,
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getExitNodePairs(llvm::SmallSetVector<NodeRef, 4> &Region) {
+getExitNodePairs(SmallSetVector<NodeRef> &Region) {
 
   // Vector that contains the pairs of exit/successor node pairs.
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> ExitSuccessorPairs;
@@ -511,8 +512,7 @@ getPredecessorNodePairs(NodeRef Node) {
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getLoopPredecessorNodePairs(NodeRef Node,
-                            llvm::SmallSetVector<NodeRef, 4> &Region) {
+getLoopPredecessorNodePairs(NodeRef Node, SmallSetVector<NodeRef> &Region) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> LoopPredecessorNodePairs;
   for (NodeRef Predecessor : predecessor_range(Node)) {
     if (not setContains(Region, Predecessor)) {
@@ -525,7 +525,7 @@ getLoopPredecessorNodePairs(NodeRef Node,
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getContinueNodePairs(NodeRef Entry, llvm::SmallSetVector<NodeRef, 4> &Region,
+getContinueNodePairs(NodeRef Entry, SmallSetVector<NodeRef> &Region,
                      NodeRef IgnoredNode) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> ContinueNodePairs;
   for (NodeRef Predecessor : predecessor_range(Entry)) {
@@ -627,8 +627,8 @@ public:
   links_range blocks() { return llvm::make_range(begin(), end()); }
   links_const_range blocks() const { return llvm::make_range(begin(), end()); }
 
-  llvm::SmallSetVector<NodeT, 4> getBlocksSet() {
-    llvm::SmallSetVector<NodeT, 4> BlocksSet;
+  SmallSetVector<NodeT> getBlocksSet() {
+    SmallSetVector<NodeT> BlocksSet;
     for (NodeT Block : blocks()) {
       BlocksSet.insert(Block);
     }
@@ -753,7 +753,7 @@ public:
 
       // Insert all the element in the currently analyzed region in a set to
       // check for the containement criteria.
-      llvm::SmallSetVector<BlockNode, 4> RegionSet;
+      SmallSetVector<BlockNode> RegionSet;
       for (BlockNode Element : *LastRegion) {
         RegionSet.insert(Element);
       }
@@ -899,7 +899,7 @@ using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
 template <class NodeT>
 class ParentTree {
   using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
-  using RegionSet = llvm::SmallSetVector<NodeT, 4>;
+  using RegionSet = SmallSetVector<NodeT>;
 
   using links_container = llvm::SmallVector<RegionSet>;
   using links_iterator = typename links_container::iterator;
@@ -944,7 +944,7 @@ private:
 
   void computePartialOrder() {
     links_container OrderedRegions;
-    llvm::SmallSetVector<size_t, 4> Processed;
+    SmallSetVector<size_t> Processed;
 
     while (Rs.size() != Processed.size()) {
       for (auto RegionIt1 = begin(); RegionIt1 != end(); RegionIt1++) {
