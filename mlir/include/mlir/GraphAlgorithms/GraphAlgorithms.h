@@ -29,10 +29,16 @@
 template <typename T>
 using SmallSetVector = llvm::SmallSetVector<T, 4>;
 
+template <typename K, typename V>
+using SmallMapVector = llvm::SmallMapVector<K, V, 4>;
+
+template <typename K, typename V>
+using SmallDenseMap = llvm::SmallDenseMap<K, V, 4>;
+
 namespace revng::detail {
 
 template <class NodeT>
-using StatusMap = llvm::MapVector<NodeT, bool>;
+using StatusMap = SmallMapVector<NodeT, bool>;
 
 template <class NodeT>
 using EdgeDescriptor = std::pair<NodeT, NodeT>;
@@ -106,7 +112,7 @@ private:
   // Set which contains the desired targets nodes marked as reachable during
   // the visit.
   SmallSetVector<NodeT> Targets;
-  llvm::DenseMap<NodeT, SmallSetVector<NodeT>> AdditionalNodes;
+  SmallDenseMap<NodeT, SmallSetVector<NodeT>> AdditionalNodes;
   NodeT Source = nullptr;
   NodeT Target = nullptr;
   bool FirstInvocation = true;
@@ -343,8 +349,8 @@ void sortRegions(llvm::SmallVector<SmallSetVector<NodeT>> &Rs) {
 
 template <class GraphT, class GT = llvm::GraphTraits<GraphT>,
           typename NodeRef = typename GT::NodeRef>
-llvm::DenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
-  llvm::DenseMap<NodeRef, size_t> ShortestPathFromEntry;
+SmallDenseMap<NodeRef, size_t> computeDistanceFromEntry(GraphT Source) {
+  SmallDenseMap<NodeRef, size_t> ShortestPathFromEntry;
 
   using SetType = llvm::bf_iterator_default_set<NodeRef>;
   using bf_iterator = llvm::bf_iterator<GraphT, SetType, GT>;
@@ -390,12 +396,12 @@ auto predecessor_range(GraphT Block) {
 }
 
 template <class NodeRef>
-llvm::MapVector<NodeRef, size_t>
+SmallMapVector<NodeRef, size_t>
 getEntryCandidates(SmallSetVector<NodeRef> &Region) {
 
   // `MapVector` that will contain all the candidate entries of a region, with
   // the associated incoming edges degree.
-  llvm::MapVector<NodeRef, size_t> Result;
+  SmallMapVector<NodeRef, size_t> Result;
 
   // We can iterate over all the predecessors of a block, if we find a pred not
   // in the current set, we increment the counter of the entry edges.
@@ -411,15 +417,15 @@ getEntryCandidates(SmallSetVector<NodeRef> &Region) {
 }
 
 template <class NodeT>
-size_t mapAt(llvm::DenseMap<NodeT, size_t> &Map, NodeT Element) {
+size_t mapAt(SmallDenseMap<NodeT, size_t> &Map, NodeT Element) {
   auto MapIt = Map.find(Element);
   assert(MapIt != Map.end());
   return MapIt->second;
 }
 
 template <class NodeT>
-NodeT electEntry(llvm::MapVector<NodeT, size_t> &EntryCandidates,
-                 llvm::DenseMap<NodeT, size_t> &ShortestPathFromEntry,
+NodeT electEntry(SmallMapVector<NodeT, size_t> &EntryCandidates,
+                 SmallDenseMap<NodeT, size_t> &ShortestPathFromEntry,
                  llvm::SmallVectorImpl<NodeT> &RPOT) {
   // Elect the Entry as the the candidate entry with the largest number of
   // incoming edges from outside the region.
@@ -460,7 +466,7 @@ NodeT electEntry(llvm::MapVector<NodeT, size_t> &EntryCandidates,
 
 template <class NodeRef>
 llvm::SmallVector<std::pair<NodeRef, NodeRef>>
-getOutlinedEntries(llvm::MapVector<NodeRef, size_t> &EntryCandidates,
+getOutlinedEntries(SmallMapVector<NodeRef, size_t> &EntryCandidates,
                    SmallSetVector<NodeRef> &Region, NodeRef Entry) {
   llvm::SmallVector<std::pair<NodeRef, NodeRef>> LateEntryPairs;
   for (const auto &[Other, NumIncoming] : EntryCandidates) {
@@ -796,12 +802,12 @@ public:
     return Result;
   }
 
-  llvm::MapVector<BlockNode, size_t>
+  SmallMapVector<BlockNode, size_t>
   getEntryCandidates(RegionNode *ParentRegion) {
 
     // `MapVector` that will contain all the candidate entries of the current
     // region, with the associated incoming edges degree.
-    llvm::MapVector<BlockNode, size_t> Result;
+    SmallMapVector<BlockNode, size_t> Result;
 
     // We iterate over all the predecessors of a block, if we find a predecessor
     // not in the current region, but which is in the parent region, we
@@ -824,7 +830,7 @@ public:
   }
 
   llvm::SmallVector<std::pair<BlockNode, BlockNode>>
-  getOutlinedEntries(llvm::MapVector<BlockNode, size_t> &EntryCandidates,
+  getOutlinedEntries(SmallMapVector<BlockNode, size_t> &EntryCandidates,
                      BlockNode Entry, RegionNode *ParentRegion) {
     llvm::SmallVector<std::pair<BlockNode, BlockNode>> LateEntryPairs;
     for (const auto &[Other, NumIncoming] : EntryCandidates) {
@@ -894,11 +900,11 @@ public:
   RegionVector &getRegion(size_t Index) { return Regions[Index]; }
 };
 
-using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
+using ParentMap = SmallDenseMap<std::ptrdiff_t, std::ptrdiff_t>;
 
 template <class NodeT>
 class ParentTree {
-  using ParentMap = llvm::DenseMap<std::ptrdiff_t, std::ptrdiff_t>;
+  using ParentMap = SmallDenseMap<std::ptrdiff_t, std::ptrdiff_t>;
   using RegionSet = SmallSetVector<NodeT>;
 
   using links_container = llvm::SmallVector<RegionSet>;
@@ -910,8 +916,8 @@ class ParentTree {
 private:
   ParentMap Map;
   links_container Rs;
-  llvm::DenseMap<std::ptrdiff_t, bool> IsRootRegionMap;
-  llvm::DenseMap<std::ptrdiff_t, NodeT> EntryMap;
+  SmallDenseMap<std::ptrdiff_t, bool> IsRootRegionMap;
+  SmallDenseMap<std::ptrdiff_t, NodeT> EntryMap;
   bool ReadyState = false;
 
 private:

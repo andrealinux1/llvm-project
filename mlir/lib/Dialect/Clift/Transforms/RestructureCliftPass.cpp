@@ -61,7 +61,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using EdgeSet = llvm::SmallSetVector<EdgeDescriptor, 4>;
   using BlockSet = llvm::SmallSetVector<mlir::Block *, 4>;
   using BlockSetVect = llvm::SmallVector<BlockSet>;
-  using BlockIntMap = llvm::DenseMap<mlir::Block *, size_t>;
+  using BlockIntMap = SmallDenseMap<mlir::Block *, size_t>;
   using BlockVect = llvm::SmallVector<mlir::Block *>;
 
   using ParentTree = revng::detail::ParentTree<mlir::Block *>;
@@ -146,7 +146,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
   }
 
-  void printMap(llvm::DenseMap<mlir::Block *, size_t> &Map) const {
+  void printMap(SmallDenseMap<mlir::Block *, size_t> &Map) const {
     llvm::dbgs() << "Map content:\n";
     for (auto const &[K, V] : Map) {
       printBlock(K);
@@ -314,13 +314,13 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     llvm::copy(RPOTraversal(&FunctionRegion), std::back_inserter(RPOT));
 
     // Compute the distance of each node from the entry node.
-    llvm::DenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
+    SmallDenseMap<mlir::Block *, size_t> ShortestPathFromEntry =
         computeDistanceFromEntry(&FunctionRegion);
 
     // The following routine pre-computes the entry block of each region.
     size_t RegionIndex = 0;
     for (BlockSet &Region : Pt.regions()) {
-      llvm::MapVector<mlir::Block *, size_t> EntryCandidates =
+      SmallMapVector<mlir::Block *, size_t> EntryCandidates =
           getEntryCandidates<mlir::Block *>(Region);
 
       // In case we are analyzing the root region, we expect to have no entry
@@ -441,7 +441,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         std::optional<mlir::Block *> EntryOpt = ChildRegion->getEntryIfBlock();
         mlir::Block *Entry = EntryOpt.value_or(nullptr);
 
-        llvm::MapVector<mlir::Block *, size_t> EntryCandidates =
+        SmallMapVector<mlir::Block *, size_t> EntryCandidates =
             ChildRegion->getEntryCandidates(ParentRegion);
 
         llvm::SmallVector<std::pair<mlir::Block *, mlir::Block *>>
