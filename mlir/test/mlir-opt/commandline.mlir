@@ -11,6 +11,7 @@
 // CHECK-NEXT: bufferization
 // CHECK-NEXT: builtin
 // CHECK-NEXT: cf
+// CHECK-NEXT: clift
 // CHECK-NEXT: complex
 // CHECK-NEXT: dlti
 // CHECK-NEXT: emitc
