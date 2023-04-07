@@ -22,4 +22,14 @@ def RestructureClift : Pass<"restructure-clift"> {
   let dependentDialects = ["clift::CliftDialect"];
 }
 
+def CombClift : Pass<"comb-clift"> {
+  let summary = "Comb in Clift module";
+  let constructor = "mlir::createCombCliftPass()";
+  let options = [
+    Option<"comb", "perform-comb", "bool",
+           /*default=*/"true",
+           "Perform the combing operation.">
+  ];
+  let dependentDialects = ["clift::CliftDialect"];
+}
 #endif // MLIR_DIALECT_CLIFT_PASSES

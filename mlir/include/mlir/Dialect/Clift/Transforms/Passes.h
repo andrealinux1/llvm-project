@@ -23,6 +23,9 @@ namespace mlir {
 /// Creates a pass that applies the restructuring to Clift.
 std::unique_ptr<Pass> createRestructureCliftPass();
 
+/// Creates a pass that applies combng to Clift.
+std::unique_ptr<Pass> createCombCliftPass();
+
 //===----------------------------------------------------------------------===//
 // Registration
 //===----------------------------------------------------------------------===//
