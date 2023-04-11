@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Clift/Transforms/Passes.h"
 
 #include "mlir/Dialect/Clift/IR/Clift.h"
+#include "mlir/Dialect/Clift/IR/CliftOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -29,11 +30,11 @@ using namespace mlir;
 
 namespace {
 
-class CombCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
+class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
 
-  using mlir::OpRewritePattern<LLVM::LLVMFuncOp>::OpRewritePattern;
+  using mlir::OpRewritePattern<clift::LoopOp>::OpRewritePattern;
   mlir::LogicalResult
-  matchAndRewrite(LLVM::LLVMFuncOp Op,
+  matchAndRewrite(clift::LoopOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
 
     // Ensure that we start from a `LLVMFuncOp` with a single `cf` region.
@@ -59,12 +60,12 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     RewritePatternSet Patterns(&getContext());
     Patterns.add<CombCliftRewriter>(&getContext());
 
-    SmallVector<Operation *> Functions;
-    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
+    SmallVector<Operation *> CliftLoops;
+    getOperation()->walk([&](clift::LoopOp L) { CliftLoops.push_back(L); });
 
     auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
-    if (failed(
-            applyOpPatternsAndFold(Functions, std::move(Patterns), Strictness)))
+    if (failed(applyOpPatternsAndFold(CliftLoops, std::move(Patterns),
+                                      Strictness)))
       signalPassFailure();
   }
 };
