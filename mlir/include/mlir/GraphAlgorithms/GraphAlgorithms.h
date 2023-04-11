@@ -391,8 +391,20 @@ auto successor_range(GraphT Block) {
 }
 
 template <class GraphT>
+size_t successor_range_size(GraphT Block) {
+  auto Range = successor_range(Block);
+  return std::distance(Range.begin(), Range.end());
+}
+
+template <class GraphT>
 auto predecessor_range(GraphT Block) {
   return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
+}
+
+template <class GraphT>
+auto predecessor_range_size(GraphT Block) {
+  auto Range = predecessor_range(Block);
+  return std::distance(Range.begin(), Range.end());
 }
 
 template <class NodeRef>

@@ -15,11 +15,14 @@
 #include "mlir/Dialect/Clift/IR/Clift.h"
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/GraphAlgorithms/GraphAlgorithms.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/Support/Debug.h"
 
 namespace mlir {
@@ -54,10 +57,24 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
     return success();
   }
 
-  void performCombCliftRegion(mlir::Region &FunctionRegion,
+  void performCombCliftRegion(mlir::Region &LoopRegion,
                               mlir::PatternRewriter &Rewriter) const {
 
     // TODO: implement implementation here.
+
+    // Step 1: Collect all the conditional nodes in the loop region.
+    assert(not LoopRegion.empty());
+    llvm::SmallVector<mlir::Block *> ConditionalBlocks;
+    for (mlir::Block *B : llvm::depth_first(&(LoopRegion.front()))) {
+
+      // TODO: current implementation is collecting conditional nodes with two
+      // successors, and asserting if they are greater. Handle also switch
+      // nodes.
+      if (successor_range_size(B) >= 2) {
+        assert(successor_range_size(B) == 2);
+        ConditionalBlocks.push_back(B);
+      }
+    }
   }
 };
 
