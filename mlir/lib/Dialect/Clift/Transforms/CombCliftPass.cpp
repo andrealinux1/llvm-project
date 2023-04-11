@@ -37,14 +37,16 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
   matchAndRewrite(clift::LoopOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
 
-    // Ensure that we start from a `LLVMFuncOp` with a single `cf` region.
+    // Ensure that each `clift.loop` operation that we find, contains a single
+    // region that we apply combing to.
     assert(Op->getNumRegions() == 1);
 
-    // Transform only regions which have an actual size.
-    mlir::Region &FunctionRegion = Op->getRegion(0);
-    if (not FunctionRegion.getBlocks().empty()) {
-      performCombCliftRegion(FunctionRegion, Rewriter);
-    }
+    // Before calling the region transformation operation, we should ensure that
+    // we do not find an empty `clift.loop` operation.
+    mlir::Region &LoopRegion = Op->getRegion(0);
+    assert(not LoopRegion.getBlocks().empty());
+    performCombCliftRegion(LoopRegion, Rewriter);
+
     return success();
   }
 
