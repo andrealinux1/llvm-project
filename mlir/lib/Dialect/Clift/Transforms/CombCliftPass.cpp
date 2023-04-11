@@ -50,11 +50,15 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
     mlir::Region &LoopRegion = Op->getRegion(0);
     assert(not LoopRegion.getBlocks().empty());
 
-    llvm::dbgs() << "Performing comb on operation:\n";
+    llvm::dbgs() << "\nPerforming comb on operation:\n";
     Op->dump();
     performCombCliftRegion(LoopRegion, Rewriter);
 
     return success();
+  }
+
+  void printBlock(mlir::Block *Block) const {
+    Block->printAsOperand(llvm::dbgs());
   }
 
   void performCombCliftRegion(mlir::Region &LoopRegion,
@@ -75,6 +79,14 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
         ConditionalBlocks.push_back(B);
       }
     }
+
+    // Print as debug the collected conditional nodes for comb.
+    llvm::dbgs() << "\nConditional Nodes: ";
+    for (mlir::Block *B : ConditionalBlocks) {
+      llvm::dbgs() << "\n";
+      printBlock(B);
+    }
+    llvm::dbgs() << "\n";
   }
 };
 
