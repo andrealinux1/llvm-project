@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Clift/Transforms/Passes.h"
 
 #include "mlir/Dialect/Clift/IR/Clift.h"
+#include "mlir/Dialect/Clift/IR/CliftDebug.h"
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/GraphAlgorithms/GraphAlgorithms.h"
@@ -55,10 +56,6 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
     performCombCliftRegion(LoopRegion, Rewriter);
 
     return success();
-  }
-
-  void printBlock(mlir::Block *Block) const {
-    Block->printAsOperand(llvm::dbgs());
   }
 
   void performCombCliftRegion(mlir::Region &LoopRegion,
