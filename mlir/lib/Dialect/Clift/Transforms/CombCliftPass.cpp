@@ -69,6 +69,19 @@ public:
     return success();
   }
 
+  bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping) const {
+    bool UpdatedOperand = false;
+    Operation *Terminator = B->getTerminator();
+    for (auto &SuccOp : Terminator->getBlockOperands()) {
+      if (mlir::Block *MappedBlock = Mapping.lookupOrNull(SuccOp.get())) {
+        SuccOp.set(MappedBlock);
+        UpdatedOperand = true;
+      }
+    }
+
+    return UpdatedOperand;
+  }
+
   void performCombCliftRegion(mlir::Region &LoopRegion,
                               mlir::PatternRewriter &Rewriter) const {
 
@@ -140,6 +153,29 @@ public:
             Operation *CloneOp = Rewriter.clone(BlockOp, Mapping);
             Mapping.map(BlockOp.getResults(), CloneOp->getResults());
           }
+
+          // Adjust the predecessors of the combed node, so that:
+          // - The predecessors that are are dominated by the conditional node,
+          // still point to `DFSBlock`.
+          // - The predecessors that do not satisfy this condition, are modified
+          // in order to point to the newly created `DFSBlockClone`.
+          llvm::SmallVector<mlir::Block *> NotDominatedPredecessors;
+          for (mlir::Block *Predecessor : predecessor_range(DFSBlock)) {
+            if (not DomInfo.dominates(Conditional, Predecessor)) {
+              NotDominatedPredecessors.push_back(Predecessor);
+            }
+          }
+
+          // Map the predecessor termnators's targets to the newly created
+          // `DFSBlockClone`.
+          bool Updated = false;
+          for (mlir::Block *Predecessor : NotDominatedPredecessors) {
+            Updated |= updateTerminatorOperands(Predecessor, Mapping);
+          }
+
+          // We should verify that at least one of the predecessor has been
+          // adjusted using
+          assert(Updated);
         }
       }
     }
