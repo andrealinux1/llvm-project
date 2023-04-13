@@ -40,7 +40,15 @@ namespace {
 
 class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
 
-  using mlir::OpRewritePattern<clift::LoopOp>::OpRewritePattern;
+  DominanceInfo &DomInfo;
+  PostDominanceInfo &PostDomInfo;
+
+public:
+  CombCliftRewriter(MLIRContext *Context, DominanceInfo &DomInfo,
+                    PostDominanceInfo &PostDomInfo)
+      : OpRewritePattern<clift::LoopOp>(Context), DomInfo(DomInfo),
+        PostDomInfo(PostDomInfo) {}
+
   mlir::LogicalResult
   matchAndRewrite(clift::LoopOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
@@ -96,21 +104,11 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
       mlir::Block *Conditional = ConditionalBlocks.back();
       ConditionalBlocks.pop_back();
 
-      // Retrieve the dominator tree.
-      DominanceInfo domInfo(LoopRegion.getParentOp());
-
-      // Retrieve the immediate post-dominator.
-      PostDominanceInfo postdomInfo(LoopRegion.getParentOp());
-      // PostDominanceInfo &postdomInfo = getAnalysis<PostDominanceInfo>();
-      postdomInfo.getDomTree(&LoopRegion);
-
-      // TODO: the post dominator node retrieval is not working well, probably
-      // we need to get the analysis in the pass instantiation, but then it is
-      // not trivial to pass it to the impl class. For the moment, we are
-      // using it just as a `nullptr`.
-      auto *PostDomNode = postdomInfo.getNode(Conditional);
+      // Retrieve the post dominator of the confitional node. The post dominator
+      // may be a `nullptr`, which signals the fact that we should continue with
+      // the analysis until the last nodes of the `LoopRegion`.
+      auto *PostDomNode = PostDomInfo.getNode(Conditional);
       mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
-      // printBlock(PostDom);
 
       // Instantiate a DFS visit, using the `ext` set in order to stop the visit
       // at the immediate post dominator node. If we cannot find the
@@ -126,7 +124,7 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
         // For each node encountered during the DFS visit, we evaluate the
         // dominance criterion by its conditional node, and in case it is not
         // dominated by the conditional, we need to perform the comb operation.
-        if (not domInfo.dominates(Conditional, DFSBlock)) {
+        if (not DomInfo.dominates(Conditional, DFSBlock)) {
 
           // We perform here the combing of the `DFSNode` identified as not
           // dominated by the conditional node it is reachable from.
@@ -150,8 +148,11 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
 
 struct CombClift : public impl::CombCliftBase<CombClift> {
   void runOnOperation() override {
+    DominanceInfo &DomInfo = getAnalysis<DominanceInfo>();
+    PostDominanceInfo &PostDomInfo = getAnalysis<PostDominanceInfo>();
+
     RewritePatternSet Patterns(&getContext());
-    Patterns.add<CombCliftRewriter>(&getContext());
+    Patterns.add<CombCliftRewriter>(&getContext(), DomInfo, PostDomInfo);
 
     SmallVector<Operation *> CliftLoops;
 
