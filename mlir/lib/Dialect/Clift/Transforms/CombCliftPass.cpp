@@ -17,6 +17,8 @@
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/GraphAlgorithms/GraphAlgorithms.h"
+#include "mlir/IR/Dominance.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/Visitors.h"
@@ -24,6 +26,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 
 namespace mlir {
@@ -84,6 +87,64 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
       printBlock(B);
     }
     llvm::dbgs() << "\n";
+
+    // Iterate over the collected conditional nodes, and over the nodes between
+    // the conditional and its immediate postdominator.
+    // We need to inspect the collected conditional blocks in reverse reverse
+    // post order.
+    while (not ConditionalBlocks.empty()) {
+      mlir::Block *Conditional = ConditionalBlocks.back();
+      ConditionalBlocks.pop_back();
+
+      // Retrieve the dominator tree.
+      DominanceInfo domInfo(LoopRegion.getParentOp());
+
+      // Retrieve the immediate post-dominator.
+      PostDominanceInfo postdomInfo(LoopRegion.getParentOp());
+      // PostDominanceInfo &postdomInfo = getAnalysis<PostDominanceInfo>();
+      postdomInfo.getDomTree(&LoopRegion);
+
+      // TODO: the post dominator node retrieval is not working well, probably
+      // we need to get the analysis in the pass instantiation, but then it is
+      // not trivial to pass it to the impl class. For the moment, we are
+      // using it just as a `nullptr`.
+      auto *PostDomNode = postdomInfo.getNode(Conditional);
+      mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
+      // printBlock(PostDom);
+
+      // Instantiate a DFS visit, using the `ext` set in order to stop the visit
+      // at the immediate post dominator node. If we cannot find the
+      // postdominator node for a specific conditional node, and therefore
+      // obtaining a `nullptr` as the post dominator node, this is coherently
+      // handled by the DFS visit, which should not stop at any node given its
+      // `ext` set is composed by a single `nullptr` node.
+      llvm::df_iterator_default_set<mlir::Block *> PostDomSet;
+      PostDomSet.insert(PostDom);
+      for (mlir::Block *DFSBlock :
+           llvm::depth_first_ext(Conditional, PostDomSet)) {
+
+        // For each node encountered during the DFS visit, we evaluate the
+        // dominance criterion by its conditional node, and in case it is not
+        // dominated by the conditional, we need to perform the comb operation.
+        if (not domInfo.dominates(Conditional, DFSBlock)) {
+
+          // We perform here the combing of the `DFSNode` identified as not
+          // dominated by the conditional node it is reachable from.
+
+          // Manual cloning of the block body.
+          IRMapping Mapping;
+          mlir::Block *DFSBlockClone = Rewriter.createBlock(DFSBlock);
+          Mapping.map(DFSBlock, DFSBlockClone);
+
+          // Iterate over all the operations contained in the `DFSBlock`, and
+          // clone them.
+          for (auto &BlockOp : *DFSBlock) {
+            Operation *CloneOp = Rewriter.clone(BlockOp, Mapping);
+            Mapping.map(BlockOp.getResults(), CloneOp->getResults());
+          }
+        }
+      }
+    }
   }
 };
 
