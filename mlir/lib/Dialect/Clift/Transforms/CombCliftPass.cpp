@@ -117,11 +117,25 @@ public:
       mlir::Block *Conditional = ConditionalBlocks.back();
       ConditionalBlocks.pop_back();
 
+      // Debug print.
+      llvm::dbgs() << "\nEvaluating conditional node: ";
+      printBlock(Conditional);
+
       // Retrieve the post dominator of the confitional node. The post dominator
       // may be a `nullptr`, which signals the fact that we should continue with
       // the analysis until the last nodes of the `LoopRegion`.
       auto *PostDomNode = PostDomInfo.getNode(Conditional);
       mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
+
+      // Debug print of the identified immediate post dominator for the
+      // conditional node under analysis.
+      llvm::dbgs() << "\nIdentified post dominator is : ";
+      if (PostDom != nullptr) {
+        printBlock(PostDom);
+      } else {
+        llvm::dbgs() << "nullptr";
+      }
+      llvm::dbgs() << "\n";
 
       // Instantiate a DFS visit, using the `ext` set in order to stop the visit
       // at the immediate post dominator node. If we cannot find the
@@ -134,10 +148,17 @@ public:
       for (mlir::Block *DFSBlock :
            llvm::depth_first_ext(Conditional, PostDomSet)) {
 
+        // Debug print.
+        llvm::dbgs() << "\nEvaluating node: ";
+        printBlock(DFSBlock);
+
         // For each node encountered during the DFS visit, we evaluate the
         // dominance criterion by its conditional node, and in case it is not
         // dominated by the conditional, we need to perform the comb operation.
         if (not DomInfo.dominates(Conditional, DFSBlock)) {
+
+          // Debug print.
+          llvm::dbgs() << "\nNode is not dominated, comb";
 
           // We perform here the combing of the `DFSNode` identified as not
           // dominated by the conditional node it is reachable from.
@@ -163,6 +184,10 @@ public:
           for (mlir::Block *Predecessor : predecessor_range(DFSBlock)) {
             if (not DomInfo.dominates(Conditional, Predecessor)) {
               NotDominatedPredecessors.push_back(Predecessor);
+
+              // Debug print.
+              llvm::dbgs() << "\nPredecessor causing not dominance: ";
+              printBlock(Predecessor);
             }
           }
 
@@ -178,6 +203,9 @@ public:
           assert(Updated);
         }
       }
+
+      // Debug print to make the module serialization go on new line.
+      llvm::dbgs() << "\n";
     }
   }
 };
