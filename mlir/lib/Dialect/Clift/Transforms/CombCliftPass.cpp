@@ -66,7 +66,7 @@ class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
     // Step 1: Collect all the conditional nodes in the loop region.
     assert(not LoopRegion.empty());
     llvm::SmallVector<mlir::Block *> ConditionalBlocks;
-    for (mlir::Block *B : llvm::depth_first(&(LoopRegion.front()))) {
+    for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
       // TODO: current implementation is collecting conditional nodes with two
       // successors, and asserting if they are greater. Handle also switch
