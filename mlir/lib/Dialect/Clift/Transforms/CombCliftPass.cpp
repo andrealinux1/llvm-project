@@ -267,7 +267,8 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     // a `PostOrder` visit, so that we end up with the reverse post order. For
     // some reason, the subsequent `applyOpPatternsAndFold` method process the
     // worklist in a reverse fashion, so we need an additional reverse operation
-    // in the middle, not completely clear why.
+    // in the middle, because in the `applyOpPatternsAndFold` method, the
+    // `WorkList` is processed in a `pop_back` fashion.
     std::reverse(CliftLoops.begin(), CliftLoops.end());
 
     auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
