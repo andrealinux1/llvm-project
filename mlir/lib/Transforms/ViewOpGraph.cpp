@@ -326,13 +326,15 @@ private:
     // Print control flow edges between blocks if the option is activated.
     if (printRegionControlFlowEdges) {
       for (Block &block : region.getBlocks()) {
-        for (Block *successor : block.getSuccessors()) {
+        unsigned numSuccessors = block.getNumSuccessors();
+        for (unsigned i = 0; i < numSuccessors; i++) {
+          Block *successor = block.getSuccessor(i);
           assert(blockLastNodeMap.count(&block) == 1);
           Node blockNode = blockLastNodeMap[&block];
           assert(blockFirstNodeMap.count(successor) == 1);
           Node successorNode = blockFirstNodeMap[successor];
           emitEdgeStmt(blockNode, successorNode,
-                       /*label=*/"custom", kLineStyleRegionControlFlow);
+                       /*label=*/numSuccessors == 1 ? "" : std::to_string(i), kLineStyleRegionControlFlow);
         }
       }
     }
