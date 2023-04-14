@@ -181,9 +181,10 @@ public:
           // attached to incoming node, so it is not possible to specify the
           // actual dominator (as the `addNewBlock` method would like). I'm
           // passing `nullptr` for now, but suspect this will break.
-          DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone, nullptr);
-          PostDomInfo.getDomTree(&LoopRegion)
-              .addNewBlock(DFSBlockClone, nullptr);
+          // DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
+          // nullptr);
+          // PostDomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
+          // nullptr);
 
           // Incremental update of the dominatro and post dominator trees to
           // represent the exiting edges of the `DFSBlockClone` which are
