@@ -175,6 +175,26 @@ public:
             Mapping.map(BlockOp.getResults(), CloneOp->getResults());
           }
 
+          // Incremental update of the dominator and post dominator trees to
+          // encompass the newly created cloned node.
+          // TODO: since the block that we are adding to the trees are not yet
+          // attached to incoming node, so it is not possible to specify the
+          // actual dominator (as the `addNewBlock` method would like). I'm
+          // passing `nullptr` for now, but suspect this will break.
+          DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone, nullptr);
+          PostDomInfo.getDomTree(&LoopRegion)
+              .addNewBlock(DFSBlockClone, nullptr);
+
+          // Incremental update of the dominatro and post dominator trees to
+          // represent the exiting edges of the `DFSBlockClone` which are
+          // identical to the ones of `DFSBlock`.
+          for (mlir::Block *Successor : successor_range(DFSBlock)) {
+            DomInfo.getDomTree(&LoopRegion)
+                .insertEdge(DFSBlockClone, Successor);
+            PostDomInfo.getDomTree(&LoopRegion)
+                .insertEdge(DFSBlockClone, Successor);
+          }
+
           // Adjust the predecessors of the combed node, so that:
           // - The predecessors that are are dominated by the conditional node,
           // still point to `DFSBlock`.
@@ -196,6 +216,16 @@ public:
           bool Updated = false;
           for (mlir::Block *Predecessor : NotDominatedPredecessors) {
             Updated |= updateTerminatorOperands(Predecessor, Mapping);
+
+            // Perform the incremental update of the dominator and post
+            // dominator trees accordingly to the CFG modification.
+            DomInfo.getDomTree(&LoopRegion).deleteEdge(Predecessor, DFSBlock);
+            DomInfo.getDomTree(&LoopRegion)
+                .insertEdge(Predecessor, DFSBlockClone);
+            PostDomInfo.getDomTree(&LoopRegion)
+                .deleteEdge(Predecessor, DFSBlock);
+            PostDomInfo.getDomTree(&LoopRegion)
+                .insertEdge(Predecessor, DFSBlockClone);
           }
 
           // We should verify that at least one of the predecessor has been
