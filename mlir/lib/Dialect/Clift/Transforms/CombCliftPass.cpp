@@ -220,13 +220,13 @@ public:
 
             // Perform the incremental update of the dominator and post
             // dominator trees accordingly to the CFG modification.
-            DomInfo.getDomTree(&LoopRegion).deleteEdge(Predecessor, DFSBlock);
             DomInfo.getDomTree(&LoopRegion)
+                .insertEdge(Predecessor, DFSBlockClone);
+            DomInfo.getDomTree(&LoopRegion).deleteEdge(Predecessor, DFSBlock);
+            PostDomInfo.getDomTree(&LoopRegion)
                 .insertEdge(Predecessor, DFSBlockClone);
             PostDomInfo.getDomTree(&LoopRegion)
                 .deleteEdge(Predecessor, DFSBlock);
-            PostDomInfo.getDomTree(&LoopRegion)
-                .insertEdge(Predecessor, DFSBlockClone);
           }
 
           // We should verify that at least one of the predecessor has been
