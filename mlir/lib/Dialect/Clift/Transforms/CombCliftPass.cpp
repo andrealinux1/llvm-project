@@ -128,10 +128,12 @@ public:
       // switch blocks, always working on the dominance of this new
       // dummy-frontier block with respect to the blocks belonging to the branch
       // under analysis.
+      llvm::SmallVector<mlir::Block *> DummyDominators;
       for (mlir::Block *Successor : successor_range(Conditional)) {
 
         // Create a new empty block, which will point to the original successor.
         mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
+        DummyDominators.push_back(DummyDominator);
         Rewriter.setInsertionPointToEnd(DummyDominator);
         auto Loc = UnknownLoc::get(getContext());
         Rewriter.create<LLVM::BrOp>(Loc, Successor);
@@ -158,6 +160,9 @@ public:
       // Retrieve the post dominator of the conditional node. The post dominator
       // may be a `nullptr`, which signals the fact that we should continue with
       // the analysis until the last nodes of the `LoopRegion`.
+      // The post dominator should correctly be computed with respect to the
+      // original `Conditional`, and not to the `DummyDominator`, or the visit
+      // will wrongly stop earlier.
       auto *PostDomNode = PostDomInfo.getNode(Conditional);
       mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
 
@@ -171,101 +176,107 @@ public:
       }
       llvm::dbgs() << "\n";
 
-      // Instantiate a DFS visit, using the `ext` set in order to stop the visit
-      // at the immediate post dominator node. If we cannot find the
-      // postdominator node for a specific conditional node, and therefore
-      // obtaining a `nullptr` as the post dominator node, this is coherently
-      // handled by the DFS visit, which should not stop at any node given its
-      // `ext` set is composed by a single `nullptr` node.
-      llvm::df_iterator_default_set<mlir::Block *> PostDomSet;
-      PostDomSet.insert(PostDom);
-      for (mlir::Block *DFSBlock :
-           llvm::depth_first_ext(Conditional, PostDomSet)) {
-
-        // Debug print.
-        llvm::dbgs() << "\nEvaluating node: ";
-        printBlock(DFSBlock);
-
-        // For each node encountered during the DFS visit, we evaluate the
-        // dominance criterion by its conditional node, and in case it is not
-        // dominated by the conditional, we need to perform the comb operation.
-        if (not DomInfo.dominates(Conditional, DFSBlock)) {
+      // The comb analysis should run on each of the previously inserted
+      // `DummyDominators`.
+      for (mlir::Block *DummyDominator : DummyDominators) {
+        // Instantiate a DFS visit, using the `ext` set in order to stop the
+        // visit
+        // at the immediate post dominator node. If we cannot find the
+        // postdominator node for a specific conditional node, and therefore
+        // obtaining a `nullptr` as the post dominator node, this is coherently
+        // handled by the DFS visit, which should not stop at any node given its
+        // `ext` set is composed by a single `nullptr` node.
+        llvm::df_iterator_default_set<mlir::Block *> PostDomSet;
+        PostDomSet.insert(PostDom);
+        for (mlir::Block *DFSBlock :
+             llvm::depth_first_ext(DummyDominator, PostDomSet)) {
 
           // Debug print.
-          llvm::dbgs() << "\nNode is not dominated, comb";
+          llvm::dbgs() << "\nEvaluating node: ";
+          printBlock(DFSBlock);
 
-          // We perform here the combing of the `DFSNode` identified as not
-          // dominated by the conditional node it is reachable from.
+          // For each node encountered during the DFS visit, we evaluate the
+          // dominance criterion by its conditional node, and in case it is not
+          // dominated by the conditional, we need to perform the comb
+          // operation.
+          if (not DomInfo.dominates(DummyDominator, DFSBlock)) {
 
-          // Manual cloning of the block body.
-          IRMapping Mapping;
-          mlir::Block *DFSBlockClone = Rewriter.createBlock(DFSBlock);
-          Mapping.map(DFSBlock, DFSBlockClone);
+            // Debug print.
+            llvm::dbgs() << "\nNode is not dominated, comb";
 
-          // Iterate over all the operations contained in the `DFSBlock`, and
-          // clone them.
-          for (auto &BlockOp : *DFSBlock) {
-            Operation *CloneOp = Rewriter.clone(BlockOp, Mapping);
-            Mapping.map(BlockOp.getResults(), CloneOp->getResults());
-          }
+            // We perform here the combing of the `DFSNode` identified as not
+            // dominated by the conditional node it is reachable from.
 
-          // Incremental update of the dominator and post dominator trees to
-          // encompass the newly created cloned node.
-          // TODO: since the block that we are adding to the trees are not yet
-          // attached to incoming node, so it is not possible to specify the
-          // actual dominator (as the `addNewBlock` method would like). I'm
-          // passing `nullptr` for now, but suspect this will break.
-          // DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
-          // nullptr);
-          // PostDomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
-          // nullptr);
+            // Manual cloning of the block body.
+            IRMapping Mapping;
+            mlir::Block *DFSBlockClone = Rewriter.createBlock(DFSBlock);
+            Mapping.map(DFSBlock, DFSBlockClone);
 
-          // Incremental update of the dominatro and post dominator trees to
-          // represent the exiting edges of the `DFSBlockClone` which are
-          // identical to the ones of `DFSBlock`.
-          for (mlir::Block *Successor : successor_range(DFSBlock)) {
-            DomInfo.getDomTree(&LoopRegion)
-                .insertEdge(DFSBlockClone, Successor);
-            PostDomInfo.getDomTree(&LoopRegion)
-                .insertEdge(DFSBlockClone, Successor);
-          }
-
-          // Adjust the predecessors of the combed node, so that:
-          // - The predecessors that are are dominated by the conditional node,
-          // still point to `DFSBlock`.
-          // - The predecessors that do not satisfy this condition, are modified
-          // in order to point to the newly created `DFSBlockClone`.
-          llvm::SmallVector<mlir::Block *> NotDominatedPredecessors;
-          for (mlir::Block *Predecessor : predecessor_range(DFSBlock)) {
-            if (not DomInfo.dominates(Conditional, Predecessor)) {
-              NotDominatedPredecessors.push_back(Predecessor);
-
-              // Debug print.
-              llvm::dbgs() << "\nPredecessor causing not dominance: ";
-              printBlock(Predecessor);
+            // Iterate over all the operations contained in the `DFSBlock`, and
+            // clone them.
+            for (auto &BlockOp : *DFSBlock) {
+              Operation *CloneOp = Rewriter.clone(BlockOp, Mapping);
+              Mapping.map(BlockOp.getResults(), CloneOp->getResults());
             }
+
+            // Incremental update of the dominator and post dominator trees to
+            // encompass the newly created cloned node.
+            // TODO: since the block that we are adding to the trees are not yet
+            // attached to incoming node, so it is not possible to specify the
+            // actual dominator (as the `addNewBlock` method would like). I'm
+            // passing `nullptr` for now, but suspect this will break.
+            // DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
+            // nullptr);
+            // PostDomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
+            // nullptr);
+
+            // Incremental update of the dominator and post dominator trees to
+            // represent the exiting edges of the `DFSBlockClone` which are
+            // identical to the ones of `DFSBlock`.
+            for (mlir::Block *Successor : successor_range(DFSBlock)) {
+              DomInfo.getDomTree(&LoopRegion)
+                  .insertEdge(DFSBlockClone, Successor);
+              PostDomInfo.getDomTree(&LoopRegion)
+                  .insertEdge(DFSBlockClone, Successor);
+            }
+
+            // Adjust the predecessors of the combed node, so that:
+            // - The predecessors that are are dominated by the conditional
+            // node, still point to `DFSBlock`.
+            // - The predecessors that do not satisfy this condition, are
+            // modified in order to point to the newly created `DFSBlockClone`.
+            llvm::SmallVector<mlir::Block *> NotDominatedPredecessors;
+            for (mlir::Block *Predecessor : predecessor_range(DFSBlock)) {
+              if (not DomInfo.dominates(DummyDominator, Predecessor)) {
+                NotDominatedPredecessors.push_back(Predecessor);
+
+                // Debug print.
+                llvm::dbgs() << "\nPredecessor causing not dominance: ";
+                printBlock(Predecessor);
+              }
+            }
+
+            // Map the predecessor termnators's targets to the newly created
+            // `DFSBlockClone`.
+            bool Updated = false;
+            for (mlir::Block *Predecessor : NotDominatedPredecessors) {
+              Updated |= updateTerminatorOperands(Predecessor, Mapping);
+
+              // Perform the incremental update of the dominator and post
+              // dominator trees accordingly to the CFG modification.
+              DomInfo.getDomTree(&LoopRegion)
+                  .insertEdge(Predecessor, DFSBlockClone);
+              DomInfo.getDomTree(&LoopRegion).deleteEdge(Predecessor, DFSBlock);
+              PostDomInfo.getDomTree(&LoopRegion)
+                  .insertEdge(Predecessor, DFSBlockClone);
+              PostDomInfo.getDomTree(&LoopRegion)
+                  .deleteEdge(Predecessor, DFSBlock);
+            }
+
+            // We should verify that at least one of the predecessor has been
+            // adjusted using
+            assert(Updated);
           }
-
-          // Map the predecessor termnators's targets to the newly created
-          // `DFSBlockClone`.
-          bool Updated = false;
-          for (mlir::Block *Predecessor : NotDominatedPredecessors) {
-            Updated |= updateTerminatorOperands(Predecessor, Mapping);
-
-            // Perform the incremental update of the dominator and post
-            // dominator trees accordingly to the CFG modification.
-            DomInfo.getDomTree(&LoopRegion)
-                .insertEdge(Predecessor, DFSBlockClone);
-            DomInfo.getDomTree(&LoopRegion).deleteEdge(Predecessor, DFSBlock);
-            PostDomInfo.getDomTree(&LoopRegion)
-                .insertEdge(Predecessor, DFSBlockClone);
-            PostDomInfo.getDomTree(&LoopRegion)
-                .deleteEdge(Predecessor, DFSBlock);
-          }
-
-          // We should verify that at least one of the predecessor has been
-          // adjusted using
-          assert(Updated);
         }
       }
 
