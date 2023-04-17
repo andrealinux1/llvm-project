@@ -22,11 +22,13 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 
 namespace mlir {
@@ -121,7 +123,39 @@ public:
       llvm::dbgs() << "\nEvaluating conditional node: ";
       printBlock(Conditional);
 
-      // Retrieve the post dominator of the confitional node. The post dominator
+      // Insert a new dummy node between the conditional block and its immediate
+      // successors. In this way, we can unify the handling of conditional and
+      // switch blocks, always working on the dominance of this new
+      // dummy-frontier block with respect to the blocks belonging to the branch
+      // under analysis.
+      for (mlir::Block *Successor : successor_range(Conditional)) {
+
+        // Create a new empty block, which will point to the original successor.
+        mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
+        Rewriter.setInsertionPointToEnd(DummyDominator);
+        auto Loc = UnknownLoc::get(getContext());
+        Rewriter.create<LLVM::BrOp>(Loc, Successor);
+
+        // Update trees.
+        DomInfo.getDomTree(&LoopRegion).insertEdge(DummyDominator, Successor);
+        PostDomInfo.getDomTree(&LoopRegion)
+            .insertEdge(DummyDominator, Successor);
+
+        // Connect the `Conditional` block to the newly created
+        // `DummyDominator`.
+        IRMapping IRMapping;
+        IRMapping.map(Successor, DummyDominator);
+        updateTerminatorOperands(Conditional, IRMapping);
+
+        // Update trees.
+        DomInfo.getDomTree(&LoopRegion).insertEdge(Conditional, DummyDominator);
+        DomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
+        PostDomInfo.getDomTree(&LoopRegion)
+            .insertEdge(Conditional, DummyDominator);
+        PostDomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
+      }
+
+      // Retrieve the post dominator of the conditional node. The post dominator
       // may be a `nullptr`, which signals the fact that we should continue with
       // the analysis until the last nodes of the `LoopRegion`.
       auto *PostDomNode = PostDomInfo.getNode(Conditional);
