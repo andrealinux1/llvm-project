@@ -94,11 +94,8 @@ public:
     llvm::SmallVector<mlir::Block *> ConditionalBlocks;
     for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
-      // TODO: current implementation is collecting conditional nodes with two
-      // successors, and asserting if they are greater. Handle also switch
-      // nodes.
+      // Enqueue all blocks with more than one successor.
       if (successor_range_size(B) >= 2) {
-        assert(successor_range_size(B) == 2);
         ConditionalBlocks.push_back(B);
       }
     }
