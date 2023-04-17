@@ -89,6 +89,22 @@ public:
 
     // TODO: implement implementation here.
 
+    // Helpers sets to contain exit nodes reachability used in the "different
+    // exits" analysis.
+    llvm::DenseMap<mlir::Block *, llvm::SmallPtrSet<mlir::Block *, 4>>
+        ReachableExits;
+    for (mlir::Block &Exit : LoopRegion) {
+
+      // Leave out non exit nodes in the Region.
+      if (successor_range_size(&Exit) > 0) {
+        continue;
+      }
+
+      for (mlir::Block *DFSBlock : llvm::inverse_depth_first(&Exit)) {
+        ReachableExits[DFSBlock].insert(&Exit);
+      }
+    }
+
     // Step 1: Collect all the conditional nodes in the loop region.
     assert(not LoopRegion.empty());
     llvm::SmallVector<mlir::Block *> ConditionalBlocks;
