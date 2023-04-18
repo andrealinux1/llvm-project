@@ -186,10 +186,24 @@ public:
           if (ThenIsDominated and ElseIsDominated) {
             InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
             InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
+
+            // Debug output.
+            llvm::dbgs() << "Inlining edge: ";
+            printEdge(EdgeDescriptor(B, Then));
+            llvm::dbgs() << "Inlining edge: ";
+            printEdge(EdgeDescriptor(B, Else));
           } else if (ThenIsDominated) {
             InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
+
+            // Debug output.
+            llvm::dbgs() << "Inlining edge: ";
+            printEdge(EdgeDescriptor(B, Then));
           } else if (ElseIsDominated) {
             InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
+
+            // Debug output.
+            llvm::dbgs() << "Inlining edge: ";
+            printEdge(EdgeDescriptor(B, Else));
           } else {
             std::abort();
           }
