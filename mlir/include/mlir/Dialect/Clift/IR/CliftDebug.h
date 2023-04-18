@@ -25,6 +25,8 @@ void printChildRegionDescriptorIndex(ChildRegionDescriptor &ChildRegion);
 void printBlockOrIndex(
     const std::variant<mlir::Block *, ChildRegionDescriptor *> &Node);
 
+void printEdge(const EdgeDescriptor &Edge);
+
 void printBackedge(EdgeDescriptor &Backedge);
 
 void printBackedges(EdgeSet &Backedges);

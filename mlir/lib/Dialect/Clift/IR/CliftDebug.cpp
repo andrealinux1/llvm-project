@@ -35,12 +35,16 @@ void printBlockOrIndex(
   }
 }
 
+void printEdge(const EdgeDescriptor &Edge) {
+  printBlock(Edge.first);
+  llvm::dbgs() << " -> ";
+  printBlock(Edge.second);
+  llvm::dbgs() << "\n";
+}
+
 void printBackedge(EdgeDescriptor &Backedge) {
   llvm::dbgs() << "Backedge: ";
-  printBlock(Backedge.first);
-  llvm::dbgs() << " -> ";
-  printBlock(Backedge.second);
-  llvm::dbgs() << "\n";
+  printEdge(Backedge);
 }
 
 void printBackedges(EdgeSet &Backedges) {
