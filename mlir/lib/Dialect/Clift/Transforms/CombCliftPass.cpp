@@ -394,6 +394,22 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     RewritePatternSet Patterns(&getContext());
     Patterns.add<CombCliftRewriter>(&getContext(), DomInfo, PostDomInfo);
 
+    // Check that the root region of the function is a DAG. We need this
+    // explicit check because the root region is not encapsuled in a
+    // `clift.loop` operation.
+    SmallVector<Operation *> Functions;
+    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
+
+    for (Operation *F : Functions) {
+      assert(F->getNumRegions() == 1);
+
+      // Perform the check only for regions that have an actual size.
+      mlir::Region &FunctionRegion = F->getRegion(0);
+      if (not FunctionRegion.getBlocks().empty()) {
+        assert(isDAG(&FunctionRegion));
+      }
+    }
+
     SmallVector<Operation *> CliftLoops;
 
     // TODO: the `walk` function contained in `include/mlir/IR/Visitors.h`,
