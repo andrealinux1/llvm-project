@@ -68,6 +68,9 @@ public:
     mlir::Region &LoopRegion = Op->getRegion(0);
     assert(not LoopRegion.getBlocks().empty());
 
+    // We also check that `clift.loop` region is a DAG.
+    assert(isDAG(&LoopRegion));
+
     llvm::dbgs() << "\nPerforming comb on operation:\n";
     Op->dump();
     performCombCliftRegion(LoopRegion, Rewriter);
