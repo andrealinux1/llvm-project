@@ -222,6 +222,12 @@ public:
       llvm::SmallVector<mlir::Block *> DummyDominators;
       for (mlir::Block *Successor : successor_range(Conditional)) {
 
+        // Skip over the inlined edges, do not create a `DummyDominator` for it,
+        // and do not add it to the nodes that need comb processing.
+        if (InlinedEdgeSet.contains(EdgeDescriptor(Conditional, Successor))) {
+          continue;
+        }
+
         // Create a new empty block, which will point to the original successor.
         mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
         DummyDominators.push_back(DummyDominator);
