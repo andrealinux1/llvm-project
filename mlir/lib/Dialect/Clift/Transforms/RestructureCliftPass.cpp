@@ -83,6 +83,7 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     mlir::Region &FunctionRegion = Op->getRegion(0);
     if (not FunctionRegion.getBlocks().empty()) {
       performRestructureCliftRegion(FunctionRegion, Rewriter);
+      assert(isDAG(&FunctionRegion));
     }
     return success();
   }
