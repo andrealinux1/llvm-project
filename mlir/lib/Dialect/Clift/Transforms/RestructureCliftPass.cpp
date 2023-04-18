@@ -814,6 +814,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
         updateParentWithCliftLoop(ParentRegion, ChildRegion, Rt, CliftLoop);
 
         generateCliftRetreating(NodesSet, Entry, Rewriter, CliftLoop);
+
+        // At the end of the restructuring each clift loop region should be
+        // acyclic.
+        assert(isDAG(ChildRegion));
       }
     }
   }
