@@ -27,6 +27,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -41,6 +42,9 @@ using namespace mlir;
 namespace {
 
 class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
+
+  using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
+  using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
 
   DominanceInfo &DomInfo;
   PostDominanceInfo &PostDomInfo;
@@ -110,9 +114,83 @@ public:
     llvm::SmallVector<mlir::Block *> ConditionalBlocks;
     for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
-      // Enqueue all blocks with more than one successor.
+      // Enqueue all blocks with more than one successor as conditional nodes to
+      // process.
       if (successor_range_size(B) >= 2) {
         ConditionalBlocks.push_back(B);
+      }
+    }
+
+    // TODO: at the present time, we make use of a set to contain and mark the
+    // edges that we consider as inlined. The Correct Way TM to do this, is to
+    // make use of Dialect attributes in order to specify that a certain
+    // successor is inlined. Unfortunately, we can only define attributes for
+    // our own dialect, so we first need to implement the control flow
+    // operations for Clift.
+    EdgeSet InlinedEdgeSet;
+    for (mlir::Block *B : ConditionalBlocks) {
+      if (successor_range_size(B) == 2) {
+
+        // For standard conditional nodes, we should apply the `inlined` edges
+        // criterion, which checks for different sets of reachable exits for
+        // each of the branches.
+        // Perform the distinct exit paths analysis. In this analysis, the
+        // branches of the conditional nodes are analyzed, to check if their
+        // exit paths are disjoint. In this situation, this conditional node
+        // can be skipped, and will not give origin to any comb operation.
+
+        // TODO: migrate this to the use of traits, and not mlir::Block
+        // methods.
+        mlir::Block *Then = B->getSuccessor(0);
+        mlir::Block *Else = B->getSuccessor(1);
+        auto ThenExits = ReachableExits[Then];
+        auto ElseExits = ReachableExits[Else];
+
+        llvm::SmallPtrSet<mlir::Block *, 4> Intersection = ThenExits;
+        llvm::set_intersect(Intersection, ElseExits);
+
+        // If the exit sets are disjoint, we can avoid processing the
+        // conditional node in the comb operation.
+        if (not Intersection.empty()) {
+          continue;
+        }
+
+        // Further check that we do not dominate at maximum one of the two set
+        // of reachable exits.
+        bool ThenIsDominated = true;
+        bool ElseIsDominated = true;
+        for (mlir::Block *Exit : ThenExits) {
+          if (not DomInfo.dominates(B, Exit)) {
+            ThenIsDominated = false;
+            break;
+          }
+        }
+        for (mlir::Block *Exit : ElseExits) {
+          if (not DomInfo.dominates(B, Exit)) {
+            ElseIsDominated = false;
+            break;
+          }
+        }
+
+        // If there is a set of exits that the current conditional block
+        // entirely dominates, we can blacklist it because it will never cause
+        // duplication. The reason is that the set of exits that we dominate can
+        // be compltetely inlined and absorbed either into the `then` or into
+        // the `else`.
+        if (ThenIsDominated or ElseIsDominated) {
+
+          // Mark the `then` or `else` edges as inlined, even both of them.
+          if (ThenIsDominated and ElseIsDominated) {
+            InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
+            InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
+          } else if (ThenIsDominated) {
+            InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
+          } else if (ElseIsDominated) {
+            InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
+          } else {
+            std::abort();
+          }
+        }
       }
     }
 
