@@ -42,6 +42,9 @@ using namespace mlir;
 namespace {
 
 class CombCliftImpl {
+  using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
+  using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
+
 public:
   CombCliftImpl(DominanceInfo &DomInfo, PostDominanceInfo &PostDomInfo)
       : DomInfo(DomInfo), PostDomInfo(PostDomInfo) {}
@@ -379,10 +382,6 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
 }
 
 class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
-
-  using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
-  using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
-
   DominanceInfo &DomInfo;
   PostDominanceInfo &PostDomInfo;
 
