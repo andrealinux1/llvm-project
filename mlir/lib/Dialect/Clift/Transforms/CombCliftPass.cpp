@@ -381,12 +381,53 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
   }
 }
 
-class CombCliftRewriter : public OpRewritePattern<clift::LoopOp> {
+class FuncOpRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   DominanceInfo &DomInfo;
   PostDominanceInfo &PostDomInfo;
 
 public:
-  CombCliftRewriter(MLIRContext *Context, DominanceInfo &DomInfo,
+  FuncOpRewriter(MLIRContext *Context, DominanceInfo &DomInfo,
+                 PostDominanceInfo &PostDomInfo)
+      : OpRewritePattern<LLVM::LLVMFuncOp>(Context), DomInfo(DomInfo),
+        PostDomInfo(PostDomInfo) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(LLVM::LLVMFuncOp Op,
+                  mlir::PatternRewriter &Rewriter) const final {
+
+    // Ensure that each `LLVM.LLVMFuncOp` operation that we find, contains a
+    // single region that we apply combing to.
+    assert(Op->getNumRegions() == 1);
+
+    // Before calling the region transformation operation, we should ensure that
+    // we do not find an empty `LLVM.LLVMFuncOp` operation.
+    mlir::Region &LoopRegion = Op->getRegion(0);
+    assert(not LoopRegion.getBlocks().empty());
+
+    // We also check that the `LLVM.LLVMFuncOp` region is a DAG.
+    assert(isDAG(&LoopRegion));
+
+    llvm::dbgs() << "\nPerforming comb on operation:\n";
+    Op->dump();
+
+    // Instantiate the `CombCliftImpl` class and call the `run` method to
+    // perform the actual comb operation.
+    // This additional class is needed because we need two `OpRewritePattern`
+    // classes, one for `clift::LoopOp` and one for the root region contained in
+    // the `LLVM::LLVMFuncOp`.
+    CombCliftImpl CCI(DomInfo, PostDomInfo);
+    CCI.run(LoopRegion, Rewriter);
+
+    return success();
+  }
+};
+
+class CliftLoopRewriter : public OpRewritePattern<clift::LoopOp> {
+  DominanceInfo &DomInfo;
+  PostDominanceInfo &PostDomInfo;
+
+public:
+  CliftLoopRewriter(MLIRContext *Context, DominanceInfo &DomInfo,
                     PostDominanceInfo &PostDomInfo)
       : OpRewritePattern<clift::LoopOp>(Context), DomInfo(DomInfo),
         PostDomInfo(PostDomInfo) {}
@@ -428,22 +469,24 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     PostDominanceInfo &PostDomInfo = getAnalysis<PostDominanceInfo>();
 
     RewritePatternSet Patterns(&getContext());
-    Patterns.add<CombCliftRewriter>(&getContext(), DomInfo, PostDomInfo);
+    Patterns.add<FuncOpRewriter>(&getContext(), DomInfo, PostDomInfo);
+    Patterns.add<CliftLoopRewriter>(&getContext(), DomInfo, PostDomInfo);
 
     // Check that the root region of the function is a DAG. We need this
     // explicit check because the root region is not encapsuled in a
     // `clift.loop` operation.
     SmallVector<Operation *> Functions;
-    getOperation()->walk([&](LLVM::LLVMFuncOp F) { Functions.push_back(F); });
+    getOperation()->walk([&](LLVM::LLVMFuncOp F) {
+      mlir::Region &FunctionRegion = F->getRegion(0);
+      assert(F->getNumRegions() == 1);
+      if (not FunctionRegion.getBlocks().empty()) {
+        Functions.push_back(F);
+      }
+    });
 
     for (Operation *F : Functions) {
-      assert(F->getNumRegions() == 1);
-
-      // Perform the check only for regions that have an actual size.
       mlir::Region &FunctionRegion = F->getRegion(0);
-      if (not FunctionRegion.getBlocks().empty()) {
-        assert(isDAG(&FunctionRegion));
-      }
+      assert(isDAG(&FunctionRegion));
     }
 
     SmallVector<Operation *> CliftLoops;
@@ -468,9 +511,14 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     // `WorkList` is processed in a `pop_back` fashion.
     std::reverse(CliftLoops.begin(), CliftLoops.end());
 
+    // Accumulate both the `LLVM.LLVMFuncOp` and the `clift.loop` operations.
+    SmallVector<Operation *> WorkList;
+    WorkList.insert(WorkList.end(), Functions.begin(), Functions.end());
+    WorkList.insert(WorkList.end(), CliftLoops.begin(), CliftLoops.end());
+
     auto Strictness = GreedyRewriteStrictness::ExistingAndNewOps;
-    if (failed(applyOpPatternsAndFold(CliftLoops, std::move(Patterns),
-                                      Strictness)))
+    if (failed(
+            applyOpPatternsAndFold(WorkList, std::move(Patterns), Strictness)))
       signalPassFailure();
 
     /*
