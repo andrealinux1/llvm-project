@@ -24,6 +24,7 @@
 #include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/DepthFirstIterator.h"
@@ -381,6 +382,46 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
   }
 }
 
+class MatchAndRewriteImpl {
+public:
+  MatchAndRewriteImpl() {}
+
+  // TODO: implement the run method.
+  mlir::LogicalResult run(Operation *Op, mlir::PatternRewriter &Rewriter,
+                          DominanceInfo &DomInfo,
+                          PostDominanceInfo &PostDomInfo);
+};
+
+mlir::LogicalResult MatchAndRewriteImpl::run(Operation *Op,
+                                             mlir::PatternRewriter &Rewriter,
+                                             DominanceInfo &DomInfo,
+                                             PostDominanceInfo &PostDomInfo) {
+  // Ensure that each `LLVM.LLVMFuncOp` operation that we find, contains a
+  // single region that we apply combing to.
+  assert(Op->getNumRegions() == 1);
+
+  // Before calling the region transformation operation, we should ensure that
+  // we do not find an empty `LLVM.LLVMFuncOp` operation.
+  mlir::Region &LoopRegion = Op->getRegion(0);
+  assert(not LoopRegion.getBlocks().empty());
+
+  // We also check that the `LLVM.LLVMFuncOp` region is a DAG.
+  assert(isDAG(&LoopRegion));
+
+  llvm::dbgs() << "\nPerforming comb on operation:\n";
+  Op->dump();
+
+  // Instantiate the `CombCliftImpl` class and call the `run` method to
+  // perform the actual comb operation.
+  // This additional class is needed because we need two `OpRewritePattern`
+  // classes, one for `clift::LoopOp` and one for the root region contained in
+  // the `LLVM::LLVMFuncOp`.
+  CombCliftImpl CCI(DomInfo, PostDomInfo);
+  CCI.run(LoopRegion, Rewriter);
+
+  return success();
+}
+
 class FuncOpRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
   DominanceInfo &DomInfo;
   PostDominanceInfo &PostDomInfo;
@@ -394,31 +435,8 @@ public:
   mlir::LogicalResult
   matchAndRewrite(LLVM::LLVMFuncOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
-
-    // Ensure that each `LLVM.LLVMFuncOp` operation that we find, contains a
-    // single region that we apply combing to.
-    assert(Op->getNumRegions() == 1);
-
-    // Before calling the region transformation operation, we should ensure that
-    // we do not find an empty `LLVM.LLVMFuncOp` operation.
-    mlir::Region &LoopRegion = Op->getRegion(0);
-    assert(not LoopRegion.getBlocks().empty());
-
-    // We also check that the `LLVM.LLVMFuncOp` region is a DAG.
-    assert(isDAG(&LoopRegion));
-
-    llvm::dbgs() << "\nPerforming comb on operation:\n";
-    Op->dump();
-
-    // Instantiate the `CombCliftImpl` class and call the `run` method to
-    // perform the actual comb operation.
-    // This additional class is needed because we need two `OpRewritePattern`
-    // classes, one for `clift::LoopOp` and one for the root region contained in
-    // the `LLVM::LLVMFuncOp`.
-    CombCliftImpl CCI(DomInfo, PostDomInfo);
-    CCI.run(LoopRegion, Rewriter);
-
-    return success();
+    MatchAndRewriteImpl MRI;
+    return MRI.run(Op, Rewriter, DomInfo, PostDomInfo);
   }
 };
 
@@ -435,31 +453,8 @@ public:
   mlir::LogicalResult
   matchAndRewrite(clift::LoopOp Op,
                   mlir::PatternRewriter &Rewriter) const final {
-
-    // Ensure that each `clift.loop` operation that we find, contains a single
-    // region that we apply combing to.
-    assert(Op->getNumRegions() == 1);
-
-    // Before calling the region transformation operation, we should ensure that
-    // we do not find an empty `clift.loop` operation.
-    mlir::Region &LoopRegion = Op->getRegion(0);
-    assert(not LoopRegion.getBlocks().empty());
-
-    // We also check that `clift.loop` region is a DAG.
-    assert(isDAG(&LoopRegion));
-
-    llvm::dbgs() << "\nPerforming comb on operation:\n";
-    Op->dump();
-
-    // Instantiate the `CombCliftImpl` class and call the `run` method to
-    // perform the actual comb operation.
-    // This additional class is needed because we need two `OpRewritePattern`
-    // classes, one for `clift::LoopOp` and one for the root region contained in
-    // the `LLVM::LLVMFuncOp`.
-    CombCliftImpl CCI(DomInfo, PostDomInfo);
-    CCI.run(LoopRegion, Rewriter);
-
-    return success();
+    MatchAndRewriteImpl MRI;
+    return MRI.run(Op, Rewriter, DomInfo, PostDomInfo);
   }
 };
 
