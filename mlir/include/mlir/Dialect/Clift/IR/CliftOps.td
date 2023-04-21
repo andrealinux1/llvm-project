@@ -21,6 +21,8 @@ def Clift_LoopOp : Clift_Op<"loop", [Terminator]> {
   let assemblyFormat = [{
     $body $LoopDestinations attr-dict
   }];
+
+  let hasVerifier = 1;
 }
 
 def Clift_ContinueOp : Clift_Op<"continue", [HasParent<"LoopOp">, Terminator]> {}

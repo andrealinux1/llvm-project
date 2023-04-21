@@ -1,5 +1,8 @@
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
 
+#include "mlir/GraphAlgorithms/GraphAlgorithms.h"
+#include "mlir/IR/RegionGraphTraits.h"
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Clift/IR/CliftOps.cpp.inc"
 
@@ -9,6 +12,10 @@ void mlir::clift::CliftDialect::registerOperations() {
 #include "mlir/Dialect/Clift/IR/CliftOps.cpp.inc"
       >();
 }
+
+//===-----------------------------------------------------------------========//
+// Code for clift::AssignLabelOp.
+//===----------------------------------------------------------------------===//
 
 mlir::LogicalResult
 mlir::clift::AssignLabelOp::canonicalize(mlir::clift::AssignLabelOp op,
@@ -20,6 +27,10 @@ mlir::clift::AssignLabelOp::canonicalize(mlir::clift::AssignLabelOp op,
   rewriter.eraseOp(op);
   return mlir::success();
 }
+
+//===-----------------------------------------------------------------========//
+// Code for clift::MakeLabelOp.
+//===----------------------------------------------------------------------===//
 
 mlir::LogicalResult mlir::clift::MakeLabelOp::verify() {
 
@@ -43,4 +54,24 @@ mlir::LogicalResult mlir::clift::MakeLabelOp::verify() {
               mlir::clift::GoToOp::getOperationName() + " use must have a " +
               mlir::clift::AssignLabelOp::getOperationName() + " use too.");
   return mlir::failure();
+}
+
+//===-----------------------------------------------------------------========//
+// Code for clift::LoopOp.
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mlir::clift::LoopOp::verify() {
+
+  // Verify that the region inside each `clift.loop` is acyclic.
+
+  // TODO: this verifier does not cover the root region, because that is not
+  //       inside a `clift.loop`. A solution to this may be the definition of a
+  //       `IsCombableInterface` in order to perform the verification on the
+  //       interface and not on the operation.
+  mlir::Region &LoopOpRegion = getBody();
+  if (isDAG(&LoopOpRegion)) {
+    return success();
+  } else {
+    return failure();
+  }
 }
