@@ -22,7 +22,7 @@ def Clift_LoopOp : Clift_Op<"loop", [Terminator]> {
     $body $LoopDestinations attr-dict
   }];
 
-  let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 def Clift_ContinueOp : Clift_Op<"continue", [HasParent<"LoopOp">, Terminator]> {}

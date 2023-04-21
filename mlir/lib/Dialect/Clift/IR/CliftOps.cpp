@@ -60,7 +60,7 @@ mlir::LogicalResult mlir::clift::MakeLabelOp::verify() {
 // Code for clift::LoopOp.
 //===----------------------------------------------------------------------===//
 
-mlir::LogicalResult mlir::clift::LoopOp::verify() {
+mlir::LogicalResult mlir::clift::LoopOp::verifyRegions() {
 
   // Verify that the region inside each `clift.loop` is acyclic.
 
