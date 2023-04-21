@@ -479,31 +479,22 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
       }
     });
 
+    // Verify the body of each function is a DAG.
     for (Operation *F : Functions) {
       mlir::Region &FunctionRegion = F->getRegion(0);
       assert(isDAG(&FunctionRegion));
     }
 
     SmallVector<Operation *> CliftLoops;
-
-    // TODO: the `walk` function contained in `include/mlir/IR/Visitors.h`,
-    // should accept as an additional parameter an ordering indication about
-    // which visit to follow during the walk on the operations.
-    // getOperation()->walk([&](clift::LoopOp L) { CliftLoops.push_back(L); },
-    // WalkOrder::PostOrder);
-    // mlir::detail::walk(getOperation(), [&](clift::LoopOp L) {
-    // CliftLoops.push_back(L); }, WalkOrder::PostOrder);
-
-    // TODO: improve this behavior with the correct use of the
-    // `applyPatternsAndFoldGreedily`.
     getOperation()->walk([&](clift::LoopOp L) { CliftLoops.push_back(L); });
 
-    // TODO: Reverse the order computed by the `walk` visit, which is by default
-    // a `PostOrder` visit, so that we end up with the reverse post order. For
-    // some reason, the subsequent `applyOpPatternsAndFold` method process the
-    // worklist in a reverse fashion, so we need an additional reverse operation
-    // in the middle, because in the `applyOpPatternsAndFold` method, the
-    // `WorkList` is processed in a `pop_back` fashion.
+    // Reverse the order computed by the `walk` visit on the `clift.loop`
+    // operations, which is by default a `PostOrder` visit, so that we end up
+    // with the reverse post order. This is necessary because, the subsequent
+    // `applyOpPatternsAndFold` method, processes the worklist in a reverse
+    // fashion, since it uses the `pop_back` method to extract elements from the
+    // `WorkList` container. Our goal is to process the operations in post
+    // order.
     std::reverse(CliftLoops.begin(), CliftLoops.end());
 
     // Accumulate both the `LLVM.LLVMFuncOp` and the `clift.loop` operations.
@@ -515,15 +506,6 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     if (failed(
             applyOpPatternsAndFold(WorkList, std::move(Patterns), Strictness)))
       signalPassFailure();
-
-    /*
-    GreedyRewriteConfig Grc;
-    Grc.useTopDownTraversal = false;
-    Grc.maxIterations = 5;
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(Patterns),
-    Grc))) signalPassFailure();
-    */
   }
 };
 } // namespace
