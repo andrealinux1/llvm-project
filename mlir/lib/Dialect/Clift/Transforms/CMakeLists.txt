@@ -9,6 +9,7 @@ add_mlir_dialect_library(MLIRCliftTransforms
   MLIRCliftPassIncGen
 
   LINK_LIBS PUBLIC
+  MLIRCliftAnalysis
   MLIRCliftDialect
   MLIRDialect
   MLIRIR

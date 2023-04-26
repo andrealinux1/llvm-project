@@ -12,6 +12,7 @@
 
 #include "mlir/Dialect/Clift/Transforms/Passes.h"
 
+#include "mlir/Dialect/Clift/Analysis/InlineEdgeAnalysis.h"
 #include "mlir/Dialect/Clift/IR/Clift.h"
 #include "mlir/Dialect/Clift/IR/CliftDebug.h"
 #include "mlir/Dialect/Clift/IR/CliftOps.h"
@@ -79,24 +80,11 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
                         mlir::PatternRewriter &Rewriter) {
   // TODO: implement implementation here.
 
-  // Helpers sets to contain exit nodes reachability used in the "different
-  // exits" analysis.
-  llvm::DenseMap<mlir::Block *, llvm::SmallPtrSet<mlir::Block *, 4>>
-      ReachableExits;
-  for (mlir::Block &Exit : LoopRegion) {
+  // TODO: instantiate a `InlinedEdgeAnalysis` element and query it.
+  CliftInlinedEdge<mlir::Block *> InlinedEdges(LoopRegion, DomInfo,
+                                               PostDomInfo);
 
-    // Leave out non exit nodes in the Region.
-    if (successor_range_size(&Exit) > 0) {
-      continue;
-    }
-
-    for (mlir::Block *DFSBlock : llvm::inverse_depth_first(&Exit)) {
-      ReachableExits[DFSBlock].insert(&Exit);
-    }
-  }
-
-  // Step 1: Collect all the conditional nodes in the loop region.
-  assert(not LoopRegion.empty());
+  // Collect all the conditional nodes in the loop region.
   llvm::SmallVector<mlir::Block *> ConditionalBlocks;
   for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
@@ -104,93 +92,6 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
     // process.
     if (successor_range_size(B) >= 2) {
       ConditionalBlocks.push_back(B);
-    }
-  }
-
-  // TODO: at the present time, we make use of a set to contain and mark the
-  // edges that we consider as inlined. The Correct Way TM to do this, is to
-  // make use of Dialect attributes in order to specify that a certain
-  // successor is inlined. Unfortunately, we can only define attributes for
-  // our own dialect, so we first need to implement the control flow
-  // operations for Clift.
-  EdgeSet InlinedEdgeSet;
-  for (mlir::Block *B : ConditionalBlocks) {
-    if (successor_range_size(B) == 2) {
-
-      // For standard conditional nodes, we should apply the `inlined` edges
-      // criterion, which checks for different sets of reachable exits for
-      // each of the branches.
-      // Perform the distinct exit paths analysis. In this analysis, the
-      // branches of the conditional nodes are analyzed, to check if their
-      // exit paths are disjoint. In this situation, this conditional node
-      // can be skipped, and will not give origin to any comb operation.
-
-      // TODO: migrate this to the use of traits, and not mlir::Block
-      // methods.
-      mlir::Block *Then = B->getSuccessor(0);
-      mlir::Block *Else = B->getSuccessor(1);
-      auto ThenExits = ReachableExits[Then];
-      auto ElseExits = ReachableExits[Else];
-
-      llvm::SmallPtrSet<mlir::Block *, 4> Intersection = ThenExits;
-      llvm::set_intersect(Intersection, ElseExits);
-
-      // If the exit sets are disjoint, we can avoid processing the
-      // conditional node in the comb operation.
-      if (not Intersection.empty()) {
-        continue;
-      }
-
-      // Further check that we do not dominate at maximum one of the two set
-      // of reachable exits.
-      bool ThenIsDominated = true;
-      bool ElseIsDominated = true;
-      for (mlir::Block *Exit : ThenExits) {
-        if (not DomInfo.dominates(B, Exit)) {
-          ThenIsDominated = false;
-          break;
-        }
-      }
-      for (mlir::Block *Exit : ElseExits) {
-        if (not DomInfo.dominates(B, Exit)) {
-          ElseIsDominated = false;
-          break;
-        }
-      }
-
-      // If there is a set of exits that the current conditional block
-      // entirely dominates, we can blacklist it because it will never cause
-      // duplication. The reason is that the set of exits that we dominate can
-      // be compltetely inlined and absorbed either into the `then` or into
-      // the `else`.
-      if (ThenIsDominated or ElseIsDominated) {
-
-        // Mark the `then` or `else` edges as inlined, even both of them.
-        if (ThenIsDominated and ElseIsDominated) {
-          InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
-          InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
-
-          // Debug output.
-          llvm::dbgs() << "Inlining edge: ";
-          printEdge(EdgeDescriptor(B, Then));
-          llvm::dbgs() << "Inlining edge: ";
-          printEdge(EdgeDescriptor(B, Else));
-        } else if (ThenIsDominated) {
-          InlinedEdgeSet.insert(EdgeDescriptor(B, Then));
-
-          // Debug output.
-          llvm::dbgs() << "Inlining edge: ";
-          printEdge(EdgeDescriptor(B, Then));
-        } else if (ElseIsDominated) {
-          InlinedEdgeSet.insert(EdgeDescriptor(B, Else));
-
-          // Debug output.
-          llvm::dbgs() << "Inlining edge: ";
-          printEdge(EdgeDescriptor(B, Else));
-        } else {
-          std::abort();
-        }
-      }
     }
   }
 
@@ -224,7 +125,7 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
 
       // Skip over the inlined edges, do not create a `DummyDominator` for it,
       // and do not add it to the nodes that need comb processing.
-      if (InlinedEdgeSet.contains(EdgeDescriptor(Conditional, Successor))) {
+      if (InlinedEdges.isInlined(EdgeDescriptor(Conditional, Successor))) {
         continue;
       }
 
