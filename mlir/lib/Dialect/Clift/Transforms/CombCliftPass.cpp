@@ -51,7 +51,6 @@ public:
   CombCliftImpl(DominanceInfo &DomInfo, PostDominanceInfo &PostDomInfo)
       : DomInfo(DomInfo), PostDomInfo(PostDomInfo) {}
 
-  // TODO: implement the run method.
   void run(mlir::Region &LoopRegion, mlir::PatternRewriter &Rewriter);
 
 private:
@@ -80,7 +79,6 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
                         mlir::PatternRewriter &Rewriter) {
   // TODO: implement implementation here.
 
-  // TODO: instantiate a `InlinedEdgeAnalysis` element and query it.
   CliftInlinedEdge<mlir::Block *> InlinedEdges(LoopRegion, DomInfo,
                                                PostDomInfo);
 
@@ -287,7 +285,6 @@ class MatchAndRewriteImpl {
 public:
   MatchAndRewriteImpl() {}
 
-  // TODO: implement the run method.
   mlir::LogicalResult run(Operation *Op, mlir::PatternRewriter &Rewriter,
                           DominanceInfo &DomInfo,
                           PostDominanceInfo &PostDomInfo);
@@ -307,6 +304,8 @@ mlir::LogicalResult MatchAndRewriteImpl::run(Operation *Op,
   assert(not LoopRegion.getBlocks().empty());
 
   // We also check that the `LLVM.LLVMFuncOp` region is a DAG.
+  // TODO: this assertion should eventually be integrated by the verifier on
+  // `clift.loop` operations.
   assert(isDAG(&LoopRegion));
 
   llvm::dbgs() << "\nPerforming comb on operation:\n";
@@ -380,9 +379,12 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
       }
     });
 
-    // Verify the body of each function is a DAG.
+    // Verify that the body of each function is a DAG.
     for (Operation *F : Functions) {
       mlir::Region &FunctionRegion = F->getRegion(0);
+
+      // TODO: this assertion should eventually be integrated by the verifier on
+      // `clift.loop` operations.
       assert(isDAG(&FunctionRegion));
     }
 

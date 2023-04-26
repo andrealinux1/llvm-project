@@ -84,6 +84,9 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     mlir::Region &FunctionRegion = Op->getRegion(0);
     if (not FunctionRegion.getBlocks().empty()) {
       performRestructureCliftRegion(FunctionRegion, Rewriter);
+
+      // TODO: this assertion should eventually be integrated by the verifier on
+      // `clift.loop` operations.
       assert(isDAG(&FunctionRegion));
     }
     return success();
@@ -713,6 +716,8 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         // At the end of the restructuring each clift loop region should be
         // acyclic.
+        // TODO: this assertion should eventually be integrated by the verifier
+        // on `clift.loop` operations.
         assert(isDAG(ChildRegion));
       }
     }
