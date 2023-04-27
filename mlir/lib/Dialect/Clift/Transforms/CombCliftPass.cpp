@@ -57,6 +57,11 @@ private:
   bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping);
   llvm::SmallVector<mlir::Block *>
   collectConditionalBlocks(mlir::Region &LoopRegion);
+  llvm::SmallVector<mlir::Block *>
+  insertDummyDominators(mlir::Region &LoopRegion, mlir::Block *Conditional,
+                        DominanceInfo &DomInfo, PostDominanceInfo &PostDomInfo,
+                        CliftInlinedEdge<mlir::Block *> &InlinedEdges,
+                        mlir::PatternRewriter &Rewriter);
   mlir::Block *electPostDom(mlir::Block *Conditional,
                             PostDominanceInfo &PostDomInfo);
   void performCombOperation(mlir::Region &LoopRegion,
@@ -105,6 +110,53 @@ CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
   llvm::dbgs() << "\n";
 
   return ConditionalBlocks;
+}
+
+llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
+    mlir::Region &LoopRegion, mlir::Block *Conditional, DominanceInfo &DomInfo,
+    PostDominanceInfo &PostDomInfo,
+    CliftInlinedEdge<mlir::Block *> &InlinedEdges,
+    mlir::PatternRewriter &Rewriter) {
+  // Insert a new dummy node between the conditional block and its immediate
+  // successors. In this way, we can unify the handling of conditional and
+  // switch blocks, always working on the dominance of this new
+  // dummy-frontier block with respect to the blocks belonging to the branch
+  // under analysis.
+  llvm::SmallVector<mlir::Block *> DummyDominators;
+  for (mlir::Block *Successor : successor_range(Conditional)) {
+
+    // Skip over the inlined edges, do not create a `DummyDominator` for it,
+    // and do not add it to the nodes that need comb processing.
+    if (InlinedEdges.isInlined(EdgeDescriptor(Conditional, Successor))) {
+      continue;
+    }
+
+    // Create a new empty block, which will point to the original successor.
+    mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
+    DummyDominators.push_back(DummyDominator);
+    Rewriter.setInsertionPointToEnd(DummyDominator);
+    MLIRContext *Context = LoopRegion.getContext();
+    auto Loc = UnknownLoc::get(Context);
+    Rewriter.create<LLVM::BrOp>(Loc, Successor);
+
+    // Update trees.
+    DomInfo.getDomTree(&LoopRegion).insertEdge(DummyDominator, Successor);
+    PostDomInfo.getDomTree(&LoopRegion).insertEdge(DummyDominator, Successor);
+
+    // Connect the `Conditional` block to the newly created
+    // `DummyDominator`.
+    IRMapping IRMapping;
+    IRMapping.map(Successor, DummyDominator);
+    updateTerminatorOperands(Conditional, IRMapping);
+
+    // Update trees.
+    DomInfo.getDomTree(&LoopRegion).insertEdge(Conditional, DummyDominator);
+    DomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
+    PostDomInfo.getDomTree(&LoopRegion).insertEdge(Conditional, DummyDominator);
+    PostDomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
+  }
+
+  return DummyDominators;
 }
 
 mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional,
@@ -263,45 +315,10 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
     llvm::dbgs() << "\nEvaluating conditional node: ";
     printBlock(Conditional);
 
-    // Insert a new dummy node between the conditional block and its immediate
-    // successors. In this way, we can unify the handling of conditional and
-    // switch blocks, always working on the dominance of this new
-    // dummy-frontier block with respect to the blocks belonging to the branch
-    // under analysis.
-    llvm::SmallVector<mlir::Block *> DummyDominators;
-    for (mlir::Block *Successor : successor_range(Conditional)) {
-
-      // Skip over the inlined edges, do not create a `DummyDominator` for it,
-      // and do not add it to the nodes that need comb processing.
-      if (InlinedEdges.isInlined(EdgeDescriptor(Conditional, Successor))) {
-        continue;
-      }
-
-      // Create a new empty block, which will point to the original successor.
-      mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
-      DummyDominators.push_back(DummyDominator);
-      Rewriter.setInsertionPointToEnd(DummyDominator);
-      MLIRContext *Context = LoopRegion.getContext();
-      auto Loc = UnknownLoc::get(Context);
-      Rewriter.create<LLVM::BrOp>(Loc, Successor);
-
-      // Update trees.
-      DomInfo.getDomTree(&LoopRegion).insertEdge(DummyDominator, Successor);
-      PostDomInfo.getDomTree(&LoopRegion).insertEdge(DummyDominator, Successor);
-
-      // Connect the `Conditional` block to the newly created
-      // `DummyDominator`.
-      IRMapping IRMapping;
-      IRMapping.map(Successor, DummyDominator);
-      updateTerminatorOperands(Conditional, IRMapping);
-
-      // Update trees.
-      DomInfo.getDomTree(&LoopRegion).insertEdge(Conditional, DummyDominator);
-      DomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
-      PostDomInfo.getDomTree(&LoopRegion)
-          .insertEdge(Conditional, DummyDominator);
-      PostDomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
-    }
+    // Insert the dummy dominators blocks for each successor of the conditional
+    // block.
+    llvm::SmallVector<mlir::Block *> DummyDominators = insertDummyDominators(
+        LoopRegion, Conditional, DomInfo, PostDomInfo, InlinedEdges, Rewriter);
 
     // Elect the immediate post dominator for the current `Conditional` block.
     mlir::Block *PostDom = electPostDom(Conditional, PostDomInfo);
