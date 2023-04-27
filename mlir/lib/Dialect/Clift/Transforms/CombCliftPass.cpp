@@ -57,6 +57,8 @@ private:
   bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping);
   llvm::SmallVector<mlir::Block *>
   collectConditionalBlocks(mlir::Region &LoopRegion);
+  mlir::Block *electPostDom(mlir::Block *Conditional,
+                            PostDominanceInfo &PostDomInfo);
   void performCombOperation(mlir::Region &LoopRegion,
                             llvm::SmallVector<mlir::Block *> &DummyDominators,
                             mlir::Block *PostDom, DominanceInfo &DomInfo,
@@ -105,10 +107,35 @@ CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
   return ConditionalBlocks;
 }
 
+mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional,
+                                         PostDominanceInfo &PostDomInfo) {
+  // Retrieve the post dominator of the conditional node. The post dominator
+  // may be a `nullptr`, which signals the fact that we should continue with
+  // the analysis until the last nodes of the `LoopRegion`.
+  // The post dominator should correctly be computed with respect to the
+  // original `Conditional`, and not to the `DummyDominator`, or the visit
+  // will wrongly stop earlier.
+  auto *PostDomNode = PostDomInfo.getNode(Conditional);
+  mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
+
+  // Debug print of the identified immediate post dominator for the
+  // conditional node under analysis.
+  llvm::dbgs() << "\nIdentified post dominator is : ";
+  if (PostDom != nullptr) {
+    printBlock(PostDom);
+  } else {
+    llvm::dbgs() << "nullptr";
+  }
+  llvm::dbgs() << "\n";
+
+  return PostDom;
+}
+
 void CombCliftImpl::performCombOperation(
     mlir::Region &LoopRegion, llvm::SmallVector<mlir::Block *> &DummyDominators,
     mlir::Block *PostDom, DominanceInfo &DomInfo,
     PostDominanceInfo &PostDomInfo, mlir::PatternRewriter &Rewriter) {
+
   // The comb analysis should run on each of the previously inserted
   // `DummyDominators`.
   for (mlir::Block *DummyDominator : DummyDominators) {
@@ -276,24 +303,8 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
       PostDomInfo.getDomTree(&LoopRegion).deleteEdge(Conditional, Successor);
     }
 
-    // Retrieve the post dominator of the conditional node. The post dominator
-    // may be a `nullptr`, which signals the fact that we should continue with
-    // the analysis until the last nodes of the `LoopRegion`.
-    // The post dominator should correctly be computed with respect to the
-    // original `Conditional`, and not to the `DummyDominator`, or the visit
-    // will wrongly stop earlier.
-    auto *PostDomNode = PostDomInfo.getNode(Conditional);
-    mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
-
-    // Debug print of the identified immediate post dominator for the
-    // conditional node under analysis.
-    llvm::dbgs() << "\nIdentified post dominator is : ";
-    if (PostDom != nullptr) {
-      printBlock(PostDom);
-    } else {
-      llvm::dbgs() << "nullptr";
-    }
-    llvm::dbgs() << "\n";
+    // Elect the immediate post dominator for the current `Conditional` block.
+    mlir::Block *PostDom = electPostDom(Conditional, PostDomInfo);
 
     // Perform the comb operation.
     performCombOperation(LoopRegion, DummyDominators, PostDom, DomInfo,
