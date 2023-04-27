@@ -55,13 +55,17 @@ public:
 
 private:
   bool updateTerminatorOperands(mlir::Block *B, IRMapping &Mapping);
+
   llvm::SmallVector<mlir::Block *>
   collectConditionalBlocks(mlir::Region &LoopRegion);
+
   llvm::SmallVector<mlir::Block *>
   insertDummyDominators(mlir::Region &LoopRegion, mlir::Block *Conditional,
-                        CliftInlinedEdge<mlir::Block *> &InlinedEdges,
+                        CliftInlinedEdge &InlinedEdges,
                         mlir::PatternRewriter &Rewriter);
+
   mlir::Block *electPostDom(mlir::Block *Conditional);
+
   void performCombOperation(mlir::Region &LoopRegion,
                             llvm::SmallVector<mlir::Block *> &DummyDominators,
                             mlir::Block *PostDom,
@@ -111,8 +115,7 @@ CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
 
 llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
     mlir::Region &LoopRegion, mlir::Block *Conditional,
-    CliftInlinedEdge<mlir::Block *> &InlinedEdges,
-    mlir::PatternRewriter &Rewriter) {
+    CliftInlinedEdge &InlinedEdges, mlir::PatternRewriter &Rewriter) {
   // Insert a new dummy node between the conditional block and its immediate
   // successors. In this way, we can unify the handling of conditional and
   // switch blocks, always working on the dominance of this new
@@ -290,8 +293,7 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
   // TODO: implement implementation here.
 
   // Perform the `InlineEdgeAnalysis` over the current region.
-  CliftInlinedEdge<mlir::Block *> InlinedEdges(LoopRegion, DomInfo,
-                                               PostDomInfo);
+  CliftInlinedEdge InlinedEdges(LoopRegion, DomInfo, PostDomInfo);
 
   // Collect all the conditional nodes in the loop region.
   llvm::SmallVector<mlir::Block *> ConditionalBlocks =

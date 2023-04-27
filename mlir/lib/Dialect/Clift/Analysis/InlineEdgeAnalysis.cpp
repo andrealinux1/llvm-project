@@ -20,10 +20,9 @@
 
 #include "llvm/Support/Debug.h"
 
-template <class GraphT>
-mlir::CliftInlinedEdge<GraphT>::CliftInlinedEdge(mlir::Region &Region,
-                                                 DominanceInfo &DomInfo,
-                                                 PostDominanceInfo &PostDomInfo)
+mlir::CliftInlinedEdge::CliftInlinedEdge(mlir::Region &Region,
+                                         DominanceInfo &DomInfo,
+                                         PostDominanceInfo &PostDomInfo)
     : DomInfo(DomInfo), PostDomInfo(PostDomInfo) {
 
   // TODO: migrate this helper analysis class to use the MFP implementation once
@@ -146,6 +145,3 @@ mlir::CliftInlinedEdge<GraphT>::CliftInlinedEdge(mlir::Region &Region,
     }
   }
 }
-
-// Explicit instantiation of template `CliftInlinedEdge` class.
-template class mlir::CliftInlinedEdge<mlir::Block *>;

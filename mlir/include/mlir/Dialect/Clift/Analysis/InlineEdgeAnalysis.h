@@ -33,7 +33,6 @@ private:
   EdgeSet InlinedEdgesSet;
 };
 
-template <class GraphT>
 class CliftInlinedEdge {
   using EdgeDescriptor = InlinedEdges::EdgeDescriptor;
 
