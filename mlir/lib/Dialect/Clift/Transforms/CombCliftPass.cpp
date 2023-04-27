@@ -75,14 +75,8 @@ bool CombCliftImpl::updateTerminatorOperands(mlir::Block *B,
   return UpdatedOperand;
 }
 
-void CombCliftImpl::run(mlir::Region &LoopRegion,
-                        mlir::PatternRewriter &Rewriter) {
-  // TODO: implement implementation here.
-
-  CliftInlinedEdge<mlir::Block *> InlinedEdges(LoopRegion, DomInfo,
-                                               PostDomInfo);
-
-  // Collect all the conditional nodes in the loop region.
+llvm::SmallVector<mlir::Block *>
+collectConditionalBlocks(mlir::Region &LoopRegion) {
   llvm::SmallVector<mlir::Block *> ConditionalBlocks;
   for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
@@ -100,6 +94,21 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
     printBlock(B);
   }
   llvm::dbgs() << "\n";
+
+  return ConditionalBlocks;
+}
+
+void CombCliftImpl::run(mlir::Region &LoopRegion,
+                        mlir::PatternRewriter &Rewriter) {
+  // TODO: implement implementation here.
+
+  // Perform the `InlineEdgeAnalysis` over the current region.
+  CliftInlinedEdge<mlir::Block *> InlinedEdges(LoopRegion, DomInfo,
+                                               PostDomInfo);
+
+  // Collect all the conditional nodes in the loop region.
+  llvm::SmallVector<mlir::Block *> ConditionalBlocks =
+      collectConditionalBlocks(LoopRegion);
 
   // Iterate over the collected conditional nodes, and over the nodes between
   // the conditional and its immediate postdominator.
