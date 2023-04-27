@@ -59,15 +59,12 @@ private:
   collectConditionalBlocks(mlir::Region &LoopRegion);
   llvm::SmallVector<mlir::Block *>
   insertDummyDominators(mlir::Region &LoopRegion, mlir::Block *Conditional,
-                        DominanceInfo &DomInfo, PostDominanceInfo &PostDomInfo,
                         CliftInlinedEdge<mlir::Block *> &InlinedEdges,
                         mlir::PatternRewriter &Rewriter);
-  mlir::Block *electPostDom(mlir::Block *Conditional,
-                            PostDominanceInfo &PostDomInfo);
+  mlir::Block *electPostDom(mlir::Block *Conditional);
   void performCombOperation(mlir::Region &LoopRegion,
                             llvm::SmallVector<mlir::Block *> &DummyDominators,
-                            mlir::Block *PostDom, DominanceInfo &DomInfo,
-                            PostDominanceInfo &PostDomInfo,
+                            mlir::Block *PostDom,
                             mlir::PatternRewriter &Rewriter);
 
 private:
@@ -113,8 +110,7 @@ CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
 }
 
 llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
-    mlir::Region &LoopRegion, mlir::Block *Conditional, DominanceInfo &DomInfo,
-    PostDominanceInfo &PostDomInfo,
+    mlir::Region &LoopRegion, mlir::Block *Conditional,
     CliftInlinedEdge<mlir::Block *> &InlinedEdges,
     mlir::PatternRewriter &Rewriter) {
   // Insert a new dummy node between the conditional block and its immediate
@@ -159,8 +155,7 @@ llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
   return DummyDominators;
 }
 
-mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional,
-                                         PostDominanceInfo &PostDomInfo) {
+mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional) {
   // Retrieve the post dominator of the conditional node. The post dominator
   // may be a `nullptr`, which signals the fact that we should continue with
   // the analysis until the last nodes of the `LoopRegion`.
@@ -185,8 +180,7 @@ mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional,
 
 void CombCliftImpl::performCombOperation(
     mlir::Region &LoopRegion, llvm::SmallVector<mlir::Block *> &DummyDominators,
-    mlir::Block *PostDom, DominanceInfo &DomInfo,
-    PostDominanceInfo &PostDomInfo, mlir::PatternRewriter &Rewriter) {
+    mlir::Block *PostDom, mlir::PatternRewriter &Rewriter) {
 
   // The comb analysis should run on each of the previously inserted
   // `DummyDominators`.
@@ -317,15 +311,14 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
 
     // Insert the dummy dominators blocks for each successor of the conditional
     // block.
-    llvm::SmallVector<mlir::Block *> DummyDominators = insertDummyDominators(
-        LoopRegion, Conditional, DomInfo, PostDomInfo, InlinedEdges, Rewriter);
+    llvm::SmallVector<mlir::Block *> DummyDominators =
+        insertDummyDominators(LoopRegion, Conditional, InlinedEdges, Rewriter);
 
     // Elect the immediate post dominator for the current `Conditional` block.
-    mlir::Block *PostDom = electPostDom(Conditional, PostDomInfo);
+    mlir::Block *PostDom = electPostDom(Conditional);
 
     // Perform the comb operation.
-    performCombOperation(LoopRegion, DummyDominators, PostDom, DomInfo,
-                         PostDomInfo, Rewriter);
+    performCombOperation(LoopRegion, DummyDominators, PostDom, Rewriter);
 
     // Debug print to make the module serialization go on new line.
     llvm::dbgs() << "\n";
