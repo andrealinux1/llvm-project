@@ -37,15 +37,12 @@ class CliftInlinedEdge {
   using EdgeDescriptor = InlinedEdges::EdgeDescriptor;
 
 public:
-  CliftInlinedEdge(mlir::Region &Region, DominanceInfo &DomInfo,
-                   PostDominanceInfo &PostDomInfo);
+  CliftInlinedEdge(mlir::Region &Region, DominanceInfo &DomInfo);
 
   bool isInlined(EdgeDescriptor Edge) { return IE.isInlined(Edge); }
 
 private:
   InlinedEdges IE;
-  DominanceInfo &DomInfo;
-  PostDominanceInfo &PostDomInfo;
 };
 
 } // namespace mlir

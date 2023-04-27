@@ -293,7 +293,7 @@ void CombCliftImpl::run(mlir::Region &LoopRegion,
   // TODO: implement implementation here.
 
   // Perform the `InlineEdgeAnalysis` over the current region.
-  CliftInlinedEdge InlinedEdges(LoopRegion, DomInfo, PostDomInfo);
+  CliftInlinedEdge InlinedEdges(LoopRegion, DomInfo);
 
   // Collect all the conditional nodes in the loop region.
   llvm::SmallVector<mlir::Block *> ConditionalBlocks =

@@ -21,9 +21,7 @@
 #include "llvm/Support/Debug.h"
 
 mlir::CliftInlinedEdge::CliftInlinedEdge(mlir::Region &Region,
-                                         DominanceInfo &DomInfo,
-                                         PostDominanceInfo &PostDomInfo)
-    : DomInfo(DomInfo), PostDomInfo(PostDomInfo) {
+                                         DominanceInfo &DomInfo) {
 
   // TODO: migrate this helper analysis class to use the MFP implementation once
   // the code is merged into orchestra dev environment.
