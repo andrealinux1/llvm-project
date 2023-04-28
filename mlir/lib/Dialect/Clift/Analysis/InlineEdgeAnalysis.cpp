@@ -29,9 +29,8 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
 
   // Helpers sets to contain exit nodes reachability used in the "different
   // exits" analysis.
-  llvm::DenseMap<mlir::Block *, llvm::SmallPtrSet<mlir::Block *, 4>>
-      ReachableExits;
-  for (mlir::Block &Exit : Region) {
+  llvm::DenseMap<NodeT *, llvm::SmallPtrSet<NodeT *, 4>> ReachableExits;
+  for (NodeT &Exit : Region) {
 
     // Start the backward DFS only from exit nodes in the region.
     if (successor_range_size(&Exit) > 0) {
@@ -39,14 +38,14 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
     }
 
     // Mark each node reachable from an exit nodes as reachable from such exit.
-    for (mlir::Block *DFSBlock : llvm::inverse_depth_first(&Exit)) {
+    for (NodeT *DFSBlock : llvm::inverse_depth_first(&Exit)) {
       ReachableExits[DFSBlock].insert(&Exit);
     }
   }
 
   // Collect all the conditional nodes in the loop region.
-  llvm::SmallVector<mlir::Block *> ConditionalBlocks;
-  for (mlir::Block *B : llvm::post_order(&(Region.front()))) {
+  llvm::SmallVector<NodeT *> ConditionalBlocks;
+  for (NodeT *B : llvm::post_order(&(Region.front()))) {
 
     // Enqueue all blocks with more than one successor as conditional nodes to
     // process.
@@ -64,17 +63,17 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
   // successor is inlined. Unfortunately, we can only define attributes for
   // our own dialect, so we first need to implement the control flow
   // operations for Clift.
-  for (mlir::Block *B : ConditionalBlocks) {
+  for (NodeT *B : ConditionalBlocks) {
     if (successor_range_size(B) == 2) {
 
       // TODO: migrate this to the use of traits, and not mlir::Block
       // methods.
-      mlir::Block *Then = B->getSuccessor(0);
-      mlir::Block *Else = B->getSuccessor(1);
+      NodeT *Then = B->getSuccessor(0);
+      NodeT *Else = B->getSuccessor(1);
       auto ThenExits = ReachableExits[Then];
       auto ElseExits = ReachableExits[Else];
 
-      llvm::SmallPtrSet<mlir::Block *, 4> Intersection = ThenExits;
+      llvm::SmallPtrSet<NodeT *, 4> Intersection = ThenExits;
       llvm::set_intersect(Intersection, ElseExits);
 
       // If the exit sets are disjoint, we can avoid processing the
@@ -88,14 +87,14 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
       bool ThenIsDominated = true;
       bool ElseIsDominated = true;
 
-      for (mlir::Block *Exit : ThenExits) {
+      for (NodeT *Exit : ThenExits) {
         if (not DomInfo.dominates(B, Exit)) {
           ThenIsDominated = false;
           break;
         }
       }
 
-      for (mlir::Block *Exit : ElseExits) {
+      for (NodeT *Exit : ElseExits) {
         if (not DomInfo.dominates(B, Exit)) {
           ElseIsDominated = false;
           break;
