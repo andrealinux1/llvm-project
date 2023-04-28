@@ -45,7 +45,7 @@ namespace {
 
 template <class NodeT>
 class CombCliftImpl {
-  using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
+  using EdgeDescriptor = revng::detail::EdgeDescriptor<NodeT *>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
   using CliftInlinedEdge = CliftInlinedEdge<NodeT>;
 
@@ -82,7 +82,7 @@ bool CombCliftImpl<NodeT>::updateTerminatorOperands(NodeT *B,
   bool UpdatedOperand = false;
   Operation *Terminator = B->getTerminator();
   for (auto &SuccOp : Terminator->getBlockOperands()) {
-    if (mlir::Block *MappedBlock = Mapping.lookupOrNull(SuccOp.get())) {
+    if (NodeT *MappedBlock = Mapping.lookupOrNull(SuccOp.get())) {
       SuccOp.set(MappedBlock);
       UpdatedOperand = true;
     }
@@ -94,8 +94,8 @@ bool CombCliftImpl<NodeT>::updateTerminatorOperands(NodeT *B,
 template <class NodeT>
 llvm::SmallVector<NodeT *>
 CombCliftImpl<NodeT>::collectConditionalBlocks(mlir::Region &LoopRegion) {
-  llvm::SmallVector<mlir::Block *> ConditionalBlocks;
-  for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
+  llvm::SmallVector<NodeT *> ConditionalBlocks;
+  for (NodeT *B : llvm::post_order(&(LoopRegion.front()))) {
 
     // Enqueue all blocks with more than one successor as conditional nodes to
     // process.
@@ -124,8 +124,8 @@ llvm::SmallVector<NodeT *> CombCliftImpl<NodeT>::insertDummyDominators(
   // switch blocks, always working on the dominance of this new
   // dummy-frontier block with respect to the blocks belonging to the branch
   // under analysis.
-  llvm::SmallVector<mlir::Block *> DummyDominators;
-  for (mlir::Block *Successor : successor_range(Conditional)) {
+  llvm::SmallVector<NodeT *> DummyDominators;
+  for (NodeT *Successor : successor_range(Conditional)) {
 
     // Skip over the inlined edges, do not create a `DummyDominator` for it,
     // and do not add it to the nodes that need comb processing.
@@ -134,7 +134,7 @@ llvm::SmallVector<NodeT *> CombCliftImpl<NodeT>::insertDummyDominators(
     }
 
     // Create a new empty block, which will point to the original successor.
-    mlir::Block *DummyDominator = Rewriter.createBlock(&LoopRegion);
+    NodeT *DummyDominator = Rewriter.createBlock(&LoopRegion);
     DummyDominators.push_back(DummyDominator);
     Rewriter.setInsertionPointToEnd(DummyDominator);
     MLIRContext *Context = LoopRegion.getContext();
@@ -170,7 +170,7 @@ NodeT *CombCliftImpl<NodeT>::electPostDom(NodeT *Conditional) {
   // original `Conditional`, and not to the `DummyDominator`, or the visit
   // will wrongly stop earlier.
   auto *PostDomNode = PostDomInfo.getNode(Conditional);
-  mlir::Block *PostDom = PostDomNode->getIDom()->getBlock();
+  NodeT *PostDom = PostDomNode->getIDom()->getBlock();
 
   // Debug print of the identified immediate post dominator for the
   // conditional node under analysis.
@@ -192,7 +192,7 @@ void CombCliftImpl<NodeT>::performCombOperation(
 
   // The comb analysis should run on each of the previously inserted
   // `DummyDominators`.
-  for (mlir::Block *DummyDominator : DummyDominators) {
+  for (NodeT *DummyDominator : DummyDominators) {
     // Instantiate a DFS visit, using the `ext` set in order to stop the
     // visit
     // at the immediate post dominator node. If we cannot find the
@@ -200,10 +200,9 @@ void CombCliftImpl<NodeT>::performCombOperation(
     // obtaining a `nullptr` as the post dominator node, this is coherently
     // handled by the DFS visit, which should not stop at any node given its
     // `ext` set is composed by a single `nullptr` node.
-    llvm::df_iterator_default_set<mlir::Block *> PostDomSet;
+    llvm::df_iterator_default_set<NodeT *> PostDomSet;
     PostDomSet.insert(PostDom);
-    for (mlir::Block *DFSBlock :
-         llvm::depth_first_ext(DummyDominator, PostDomSet)) {
+    for (NodeT *DFSBlock : llvm::depth_first_ext(DummyDominator, PostDomSet)) {
 
       // Debug print.
       llvm::dbgs() << "\nEvaluating node: ";
@@ -223,7 +222,7 @@ void CombCliftImpl<NodeT>::performCombOperation(
 
         // Manual cloning of the block body.
         IRMapping Mapping;
-        mlir::Block *DFSBlockClone = Rewriter.createBlock(DFSBlock);
+        NodeT *DFSBlockClone = Rewriter.createBlock(DFSBlock);
         Mapping.map(DFSBlock, DFSBlockClone);
 
         // Iterate over all the operations contained in the `DFSBlock`, and
@@ -247,7 +246,7 @@ void CombCliftImpl<NodeT>::performCombOperation(
         // Incremental update of the dominator and post dominator trees to
         // represent the exiting edges of the `DFSBlockClone` which are
         // identical to the ones of `DFSBlock`.
-        for (mlir::Block *Successor : successor_range(DFSBlock)) {
+        for (NodeT *Successor : successor_range(DFSBlock)) {
           DomInfo.getDomTree(&LoopRegion).insertEdge(DFSBlockClone, Successor);
           PostDomInfo.getDomTree(&LoopRegion)
               .insertEdge(DFSBlockClone, Successor);
@@ -258,8 +257,8 @@ void CombCliftImpl<NodeT>::performCombOperation(
         // node, still point to `DFSBlock`.
         // - The predecessors that do not satisfy this condition, are
         // modified in order to point to the newly created `DFSBlockClone`.
-        llvm::SmallVector<mlir::Block *> NotDominatedPredecessors;
-        for (mlir::Block *Predecessor : predecessor_range(DFSBlock)) {
+        llvm::SmallVector<NodeT *> NotDominatedPredecessors;
+        for (NodeT *Predecessor : predecessor_range(DFSBlock)) {
           if (not DomInfo.dominates(DummyDominator, Predecessor)) {
             NotDominatedPredecessors.push_back(Predecessor);
 
@@ -272,7 +271,7 @@ void CombCliftImpl<NodeT>::performCombOperation(
         // Map the predecessor termnators's targets to the newly created
         // `DFSBlockClone`.
         bool Updated = false;
-        for (mlir::Block *Predecessor : NotDominatedPredecessors) {
+        for (NodeT *Predecessor : NotDominatedPredecessors) {
           Updated |= updateTerminatorOperands(Predecessor, Mapping);
 
           // Perform the incremental update of the dominator and post
