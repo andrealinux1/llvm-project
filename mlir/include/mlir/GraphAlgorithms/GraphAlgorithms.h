@@ -397,6 +397,13 @@ size_t successor_range_size(GraphT Block) {
 }
 
 template <class GraphT>
+GraphT get_successor(GraphT Block, ptrdiff_t I) {
+  auto Range = successor_range(Block);
+  assert(I < std::distance(Range.begin(), Range.end()));
+  return *std::next(Range.begin(), I);
+}
+
+template <class GraphT>
 auto predecessor_range(GraphT Block) {
   return child_range<GraphT, llvm::GraphTraits<llvm::Inverse<GraphT>>>(Block);
 }
@@ -405,6 +412,13 @@ template <class GraphT>
 auto predecessor_range_size(GraphT Block) {
   auto Range = predecessor_range(Block);
   return std::distance(Range.begin(), Range.end());
+}
+
+template <class GraphT>
+GraphT get_predecessor(GraphT Block, ptrdiff_t I) {
+  auto Range = predecessor_range(Block);
+  assert(I < std::distance(Range.begin(), Range.end()));
+  return *std::next(Range.begin(), I);
 }
 
 template <class NodeRef>

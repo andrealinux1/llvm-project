@@ -65,11 +65,8 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
   // operations for Clift.
   for (NodeT *B : ConditionalBlocks) {
     if (successor_range_size(B) == 2) {
-
-      // TODO: migrate this to the use of traits, and not mlir::Block
-      // methods.
-      NodeT *Then = B->getSuccessor(0);
-      NodeT *Else = B->getSuccessor(1);
+      NodeT *Then = get_successor(B, 0);
+      NodeT *Else = get_successor(B, 1);
       auto ThenExits = ReachableExits[Then];
       auto ElseExits = ReachableExits[Else];
 
