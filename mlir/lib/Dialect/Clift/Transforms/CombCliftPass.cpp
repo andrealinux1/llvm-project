@@ -43,6 +43,7 @@ using namespace mlir;
 
 namespace {
 
+template <class NodeT>
 class CombCliftImpl {
   using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
@@ -77,8 +78,9 @@ private:
   PostDominanceInfo &PostDomInfo;
 };
 
-bool CombCliftImpl::updateTerminatorOperands(mlir::Block *B,
-                                             IRMapping &Mapping) {
+template <class NodeT>
+bool CombCliftImpl<NodeT>::updateTerminatorOperands(mlir::Block *B,
+                                                    IRMapping &Mapping) {
   bool UpdatedOperand = false;
   Operation *Terminator = B->getTerminator();
   for (auto &SuccOp : Terminator->getBlockOperands()) {
@@ -91,8 +93,9 @@ bool CombCliftImpl::updateTerminatorOperands(mlir::Block *B,
   return UpdatedOperand;
 }
 
+template <class NodeT>
 llvm::SmallVector<mlir::Block *>
-CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
+CombCliftImpl<NodeT>::collectConditionalBlocks(mlir::Region &LoopRegion) {
   llvm::SmallVector<mlir::Block *> ConditionalBlocks;
   for (mlir::Block *B : llvm::post_order(&(LoopRegion.front()))) {
 
@@ -114,7 +117,8 @@ CombCliftImpl::collectConditionalBlocks(mlir::Region &LoopRegion) {
   return ConditionalBlocks;
 }
 
-llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
+template <class NodeT>
+llvm::SmallVector<mlir::Block *> CombCliftImpl<NodeT>::insertDummyDominators(
     mlir::Region &LoopRegion, mlir::Block *Conditional,
     CliftInlinedEdge &InlinedEdges, mlir::PatternRewriter &Rewriter) {
   // Insert a new dummy node between the conditional block and its immediate
@@ -159,7 +163,8 @@ llvm::SmallVector<mlir::Block *> CombCliftImpl::insertDummyDominators(
   return DummyDominators;
 }
 
-mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional) {
+template <class NodeT>
+mlir::Block *CombCliftImpl<NodeT>::electPostDom(mlir::Block *Conditional) {
   // Retrieve the post dominator of the conditional node. The post dominator
   // may be a `nullptr`, which signals the fact that we should continue with
   // the analysis until the last nodes of the `LoopRegion`.
@@ -182,7 +187,8 @@ mlir::Block *CombCliftImpl::electPostDom(mlir::Block *Conditional) {
   return PostDom;
 }
 
-void CombCliftImpl::performCombOperation(
+template <class NodeT>
+void CombCliftImpl<NodeT>::performCombOperation(
     mlir::Region &LoopRegion, llvm::SmallVector<mlir::Block *> &DummyDominators,
     mlir::Block *PostDom, mlir::PatternRewriter &Rewriter) {
 
@@ -289,8 +295,9 @@ void CombCliftImpl::performCombOperation(
   }
 }
 
-void CombCliftImpl::run(mlir::Region &LoopRegion,
-                        mlir::PatternRewriter &Rewriter) {
+template <class NodeT>
+void CombCliftImpl<NodeT>::run(mlir::Region &LoopRegion,
+                               mlir::PatternRewriter &Rewriter) {
   // TODO: implement implementation here.
 
   // Perform the `InlineEdgeAnalysis` over the current region.
@@ -363,7 +370,7 @@ mlir::LogicalResult MatchAndRewriteImpl::run(Operation *Op,
   // This additional class is needed because we need two `OpRewritePattern`
   // classes, one for `clift::LoopOp` and one for the root region contained in
   // the `LLVM::LLVMFuncOp`.
-  CombCliftImpl CCI(DomInfo, PostDomInfo);
+  CombCliftImpl<mlir::Block> CCI(DomInfo, PostDomInfo);
   CCI.run(LoopRegion, Rewriter);
 
   return success();
