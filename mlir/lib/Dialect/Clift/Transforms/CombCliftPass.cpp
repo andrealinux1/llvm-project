@@ -46,6 +46,7 @@ namespace {
 class CombCliftImpl {
   using EdgeDescriptor = revng::detail::EdgeDescriptor<mlir::Block *>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
+  using CliftInlinedEdge = CliftInlinedEdge<mlir::Block *>;
 
 public:
   CombCliftImpl(DominanceInfo &DomInfo, PostDominanceInfo &PostDomInfo)

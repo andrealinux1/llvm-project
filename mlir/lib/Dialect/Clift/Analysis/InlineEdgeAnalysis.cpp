@@ -20,8 +20,9 @@
 
 #include "llvm/Support/Debug.h"
 
-mlir::CliftInlinedEdge::CliftInlinedEdge(mlir::Region &Region,
-                                         DominanceInfo &DomInfo) {
+template <class GraphT>
+mlir::CliftInlinedEdge<GraphT>::CliftInlinedEdge(mlir::Region &Region,
+                                                 DominanceInfo &DomInfo) {
 
   // TODO: migrate this helper analysis class to use the MFP implementation once
   // the code is merged into orchestra dev environment.
@@ -143,3 +144,6 @@ mlir::CliftInlinedEdge::CliftInlinedEdge(mlir::Region &Region,
     }
   }
 }
+
+// Explicit instantiation for the `mlir::Block *` class.
+template class mlir::CliftInlinedEdge<mlir::Block *>;

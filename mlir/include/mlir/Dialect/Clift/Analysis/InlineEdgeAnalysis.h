@@ -18,9 +18,10 @@
 
 namespace mlir {
 
+template <class GraphT>
 class InlinedEdges {
 public:
-  using EdgeDescriptor = std::pair<mlir::Block *, mlir::Block *>;
+  using EdgeDescriptor = std::pair<GraphT, GraphT>;
   using EdgeSet = llvm::SmallSet<EdgeDescriptor, 4>;
 
 public:
@@ -33,8 +34,9 @@ private:
   EdgeSet InlinedEdgesSet;
 };
 
+template <class GraphT>
 class CliftInlinedEdge {
-  using EdgeDescriptor = InlinedEdges::EdgeDescriptor;
+  using EdgeDescriptor = typename InlinedEdges<GraphT>::EdgeDescriptor;
 
 public:
   CliftInlinedEdge(mlir::Region &Region, DominanceInfo &DomInfo);
@@ -42,7 +44,7 @@ public:
   bool isInlined(EdgeDescriptor Edge) { return IE.isInlined(Edge); }
 
 private:
-  InlinedEdges IE;
+  InlinedEdges<GraphT> IE;
 };
 
 } // namespace mlir
