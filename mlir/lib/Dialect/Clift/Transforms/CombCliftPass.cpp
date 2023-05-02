@@ -233,17 +233,6 @@ void CombCliftImpl<NodeT>::performCombOperation(
         }
 
         // Incremental update of the dominator and post dominator trees to
-        // encompass the newly created cloned node.
-        // TODO: since the block that we are adding to the trees are not yet
-        // attached to incoming node, so it is not possible to specify the
-        // actual dominator (as the `addNewBlock` method would like). I'm
-        // passing `nullptr` for now, but suspect this will break.
-        // DomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
-        // nullptr);
-        // PostDomInfo.getDomTree(&LoopRegion).addNewBlock(DFSBlockClone,
-        // nullptr);
-
-        // Incremental update of the dominator and post dominator trees to
         // represent the exiting edges of the `DFSBlockClone` which are
         // identical to the ones of `DFSBlock`.
         for (NodeT *Successor : successor_range(DFSBlock)) {
@@ -295,8 +284,6 @@ void CombCliftImpl<NodeT>::performCombOperation(
 template <class NodeT>
 void CombCliftImpl<NodeT>::run(mlir::Region &LoopRegion,
                                mlir::PatternRewriter &Rewriter) {
-  // TODO: implement implementation here.
-
   // Perform the `InlineEdgeAnalysis` over the current region.
   CliftInlinedEdge InlinedEdges(LoopRegion, DomInfo);
 
