@@ -341,9 +341,11 @@ mlir::LogicalResult MatchAndRewriteImpl::run(Operation *Op,
   mlir::Region &LoopRegion = Op->getRegion(0);
   assert(not LoopRegion.getBlocks().empty());
 
-  // We also check that the `LLVM.LLVMFuncOp` region is a DAG.
-  // TODO: this assertion should eventually be integrated by the verifier on
-  // `clift.loop` operations.
+  // TODO: we integrated the `isDAG` check into the region verifier of the
+  // `clift.loop` operation, so such check will be eventually run when the
+  // module verification is invoked by the pipeline pass, but doing it
+  // manually here ensures that the property is enforced just before the combing
+  // is performed. We should invoke here directly the verifier, if permitted.
   assert(isDAG(&LoopRegion));
 
   llvm::dbgs() << "\nPerforming comb on operation:\n";
@@ -421,8 +423,10 @@ struct CombClift : public impl::CombCliftBase<CombClift> {
     for (Operation *F : Functions) {
       mlir::Region &FunctionRegion = F->getRegion(0);
 
-      // TODO: this assertion should eventually be integrated by the verifier on
-      // `clift.loop` operations.
+      // TODO: we currently integrated the `isDAG` check in the region verifier
+      // for the `clift.loop` operation, but unfortunately the `root` region is
+      // not contained into such operation, so we need to manually apply the
+      // check for the outermost region body of the function.
       assert(isDAG(&FunctionRegion));
     }
 

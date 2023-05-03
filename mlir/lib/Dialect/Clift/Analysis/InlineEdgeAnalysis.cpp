@@ -54,15 +54,14 @@ mlir::CliftInlinedEdge<NodeT>::CliftInlinedEdge(mlir::Region &Region,
     }
   }
 
+  // TODO: We considered using a mlir Dialect attribute to store the inlined
+  // property on an edge. Unforunately this option can cause a significant
+  // effort in maintaining the attribute update along the mlir pipeline. For
+  // this reason, we implemented an analysis through the `CliftInlinedEdge`
+  // class to compute and query such property.
+
   // Iterate over the conditional nodes, and carry out the separate reachable
   // exit analysis.
-
-  // TODO: at the present time, we make use of a set to contain and mark the
-  // edges that we consider as inlined. The Correct Way TM to do this, is to
-  // make use of Dialect attributes in order to specify that a certain
-  // successor is inlined. Unfortunately, we can only define attributes for
-  // our own dialect, so we first need to implement the control flow
-  // operations for Clift.
   for (NodeT *B : ConditionalBlocks) {
     if (successor_range_size(B) == 2) {
       NodeT *Then = get_successor(B, 0);

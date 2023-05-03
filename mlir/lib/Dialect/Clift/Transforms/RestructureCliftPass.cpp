@@ -85,8 +85,10 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
     if (not FunctionRegion.getBlocks().empty()) {
       performRestructureCliftRegion(FunctionRegion, Rewriter);
 
-      // TODO: this assertion should eventually be integrated by the verifier on
-      // `clift.loop` operations.
+      // TODO: we currently integrated the `isDAG` check in the region verifier
+      // for the `clift.loop` operation, but unfortunately the `root` region is
+      // not contained into such operation, so we need to manually apply the
+      // check for the outermost region body of the function.
       assert(isDAG(&FunctionRegion));
     }
     return success();
@@ -714,10 +716,15 @@ class RestructureCliftRewriter : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
         generateCliftRetreating(NodesSet, Entry, Rewriter, CliftLoop);
 
+        // TODO: we integrated the `isDAG` check into the region verifier of the
+        // `clift.loop` operation, so such check will be eventually run when the
+        // module verification is invoked by the pipeline pass, but doing it
+        // manually here ensures that the property is enforced just after the
+        // restructuring. We should invoke here directly the verifier, if
+        // permitted.
+
         // At the end of the restructuring each clift loop region should be
         // acyclic.
-        // TODO: this assertion should eventually be integrated by the verifier
-        // on `clift.loop` operations.
         assert(isDAG(ChildRegion));
       }
     }
