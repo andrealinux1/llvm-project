@@ -13,7 +13,7 @@ func.func @flipif(%cond: i1) -> i32 {
   return %x : i32
 }
 
-// CHECK:  func.func @flipif(%arg0: i1) -> i32 {
+// CHECK-LABEL:  func.func @flipif(%arg0: i1) -> i32 {
 // CHECK-NEXT:    %0:2 = scf.if %arg0 -> (i32, i32) {
 // CHECK-NEXT:      %c10_i32 = arith.constant 10 : i32
 // CHECK-NEXT:      %c20_i32 = arith.constant 20 : i32
