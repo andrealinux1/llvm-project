@@ -1,4 +1,4 @@
-// RUN: mlir-opt -restructure-clift %s | FileCheck %s
+// RUN: mlir-opt -restructure-clift %s | FileCheck %s -check-prefix=CHECK-RESTRUCTURE
 
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<i64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f80, dense<128> : vector<2xi32>>, #dlti.dl_entry<i1, dense<8> : vector<2xi32>>, #dlti.dl_entry<i8, dense<8> : vector<2xi32>>, #dlti.dl_entry<i16, dense<16> : vector<2xi32>>, #dlti.dl_entry<i32, dense<32> : vector<2xi32>>, #dlti.dl_entry<f16, dense<16> : vector<2xi32>>, #dlti.dl_entry<f64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f128, dense<128> : vector<2xi32>>>} {
   llvm.mlir.global private unnamed_addr constant @".str"("%d\00") {addr_space = 0 : i32, alignment = 1 : i64, dso_local}
@@ -43,65 +43,65 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
   llvm.func @printf(!llvm.ptr, ...) -> i32 attributes {passthrough = [["frame-pointer", "all"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]}
 }
 
-// CHECK-LABEL: module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<i64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f80, dense<128> : vector<2xi32>>, #dlti.dl_entry<i1, dense<8> : vector<2xi32>>, #dlti.dl_entry<i8, dense<8> : vector<2xi32>>, #dlti.dl_entry<i16, dense<16> : vector<2xi32>>, #dlti.dl_entry<i32, dense<32> : vector<2xi32>>, #dlti.dl_entry<f16, dense<16> : vector<2xi32>>, #dlti.dl_entry<f64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f128, dense<128> : vector<2xi32>>>} {
-// CHECK-NEXT:   llvm.mlir.global private unnamed_addr constant @".str"("%d\00") {addr_space = 0 : i32, alignment = 1 : i64, dso_local}
-// CHECK-NEXT:   llvm.func @main() attributes {passthrough = ["noinline", "nounwind", "optnone", ["uwtable", "2"], ["frame-pointer", "all"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]} {
-// CHECK-NEXT:     %0 = clift.make_label !clift.label
-// CHECK-NEXT:     %1 = clift.make_label !clift.label
-// CHECK-NEXT:     %2 = llvm.mlir.constant(1 : i32) : i32
-// CHECK-NEXT:     %3 = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:     %4 = llvm.mlir.constant(10 : i32) : i32
-// CHECK-NEXT:     %5 = llvm.mlir.constant("%d\00") : !llvm.array<3 x i8>
-// CHECK-NEXT:     %6 = llvm.mlir.addressof @".str" : !llvm.ptr
-// CHECK-NEXT:     %7 = llvm.alloca %2 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
-// CHECK-NEXT:     %8 = llvm.alloca %2 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
-// CHECK-NEXT:     llvm.store %3, %7 : i32, !llvm.ptr
-// CHECK-NEXT:     llvm.store %3, %8 : i32, !llvm.ptr
-// CHECK-NEXT:     llvm.br ^bb2
-// CHECK-NEXT:   ^bb1:  // pred: ^bb2
-// CHECK-NEXT:     clift.assign_label %0 !clift.label
-// CHECK-NEXT:     llvm.return
-// CHECK-NEXT:   ^bb2:  // pred: ^bb0
-// CHECK-NEXT:     clift.loop {
-// CHECK-NEXT:       llvm.br ^bb1
-// CHECK-NEXT:     ^bb1:  // pred: ^bb0
-// CHECK-NEXT:       %9 = llvm.load %7 : !llvm.ptr -> i32
-// CHECK-NEXT:       %10 = llvm.icmp "slt" %9, %4 : i32
-// CHECK-NEXT:       llvm.cond_br %10, ^bb3, ^bb5
-// CHECK-NEXT:     ^bb2:  // pred: ^bb3
-// CHECK-NEXT:       clift.loop {
-// CHECK-NEXT:         llvm.br ^bb1
-// CHECK-NEXT:       ^bb1:  // pred: ^bb0
-// CHECK-NEXT:         %15 = llvm.load %8 : !llvm.ptr -> i32
-// CHECK-NEXT:         %16 = llvm.icmp "slt" %15, %4 : i32
-// CHECK-NEXT:         llvm.cond_br %16, ^bb2, ^bb3
-// CHECK-NEXT:       ^bb2:  // pred: ^bb1
-// CHECK-NEXT:         %17 = llvm.load %8 : !llvm.ptr -> i32
-// CHECK-NEXT:         %18 = llvm.call @printf(%6, %17) : (!llvm.ptr, i32) -> i32
-// CHECK-NEXT:         %19 = llvm.load %8 : !llvm.ptr -> i32
-// CHECK-NEXT:         %20 = llvm.add %19, %2  : i32
-// CHECK-NEXT:         llvm.store %20, %8 : i32, !llvm.ptr
-// CHECK-NEXT:         llvm.br ^bb4
-// CHECK-NEXT:       ^bb3:  // pred: ^bb1
-// CHECK-NEXT:         clift.goto %1 !clift.label
-// CHECK-NEXT:       ^bb4:  // pred: ^bb2
-// CHECK-NEXT:         "clift.continue"() : () -> ()
-// CHECK-NEXT:       } ^bb4
-// CHECK-NEXT:     ^bb3:  // pred: ^bb1
-// CHECK-NEXT:       %11 = llvm.load %7 : !llvm.ptr -> i32
-// CHECK-NEXT:       %12 = llvm.call @printf(%6, %11) : (!llvm.ptr, i32) -> i32
-// CHECK-NEXT:       %13 = llvm.load %7 : !llvm.ptr -> i32
-// CHECK-NEXT:       %14 = llvm.add %13, %2  : i32
-// CHECK-NEXT:       llvm.store %14, %7 : i32, !llvm.ptr
-// CHECK-NEXT:       llvm.br ^bb2
-// CHECK-NEXT:     ^bb4:  // pred: ^bb2
-// CHECK-NEXT:       clift.assign_label %1 !clift.label
-// CHECK-NEXT:       llvm.br ^bb6
-// CHECK-NEXT:     ^bb5:  // pred: ^bb1
-// CHECK-NEXT:       clift.goto %0 !clift.label
-// CHECK-NEXT:     ^bb6:  // pred: ^bb4
-// CHECK-NEXT:       "clift.continue"() : () -> ()
-// CHECK-NEXT:     } ^bb1
-// CHECK-NEXT:   }
-// CHECK-COM:   llvm.func @printf(!llvm.ptr, ...) -> i32 attributes {passthrough = [["frame-pointer", "all"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]}
-// CHECK-NEXT: }
+// CHECK-RESTRUCTURE-LABEL: module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<i64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f80, dense<128> : vector<2xi32>>, #dlti.dl_entry<i1, dense<8> : vector<2xi32>>, #dlti.dl_entry<i8, dense<8> : vector<2xi32>>, #dlti.dl_entry<i16, dense<16> : vector<2xi32>>, #dlti.dl_entry<i32, dense<32> : vector<2xi32>>, #dlti.dl_entry<f16, dense<16> : vector<2xi32>>, #dlti.dl_entry<f64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f128, dense<128> : vector<2xi32>>>} {
+// CHECK-RESTRUCTURE-NEXT:   llvm.mlir.global private unnamed_addr constant @".str"("%d\00") {addr_space = 0 : i32, alignment = 1 : i64, dso_local}
+// CHECK-RESTRUCTURE-NEXT:   llvm.func @main() attributes {passthrough = ["noinline", "nounwind", "optnone", ["uwtable", "2"], ["frame-pointer", "all"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]} {
+// CHECK-RESTRUCTURE-NEXT:     %0 = clift.make_label !clift.label
+// CHECK-RESTRUCTURE-NEXT:     %1 = clift.make_label !clift.label
+// CHECK-RESTRUCTURE-NEXT:     %2 = llvm.mlir.constant(1 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %3 = llvm.mlir.constant(0 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %4 = llvm.mlir.constant(10 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %5 = llvm.mlir.constant("%d\00") : !llvm.array<3 x i8>
+// CHECK-RESTRUCTURE-NEXT:     %6 = llvm.mlir.addressof @".str" : !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     %7 = llvm.alloca %2 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     %8 = llvm.alloca %2 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.store %3, %7 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.store %3, %8 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.br ^bb2
+// CHECK-RESTRUCTURE-NEXT:   ^bb1:  // pred: ^bb2
+// CHECK-RESTRUCTURE-NEXT:     clift.assign_label %0 !clift.label
+// CHECK-RESTRUCTURE-NEXT:     llvm.return
+// CHECK-RESTRUCTURE-NEXT:   ^bb2:  // pred: ^bb0
+// CHECK-RESTRUCTURE-NEXT:     clift.loop {
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb1
+// CHECK-RESTRUCTURE-NEXT:     ^bb1:  // pred: ^bb0
+// CHECK-RESTRUCTURE-NEXT:       %9 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %10 = llvm.icmp "slt" %9, %4 : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.cond_br %10, ^bb3, ^bb5
+// CHECK-RESTRUCTURE-NEXT:     ^bb2:  // pred: ^bb3
+// CHECK-RESTRUCTURE-NEXT:       clift.loop {
+// CHECK-RESTRUCTURE-NEXT:         llvm.br ^bb1
+// CHECK-RESTRUCTURE-NEXT:       ^bb1:  // pred: ^bb0
+// CHECK-RESTRUCTURE-NEXT:         %15 = llvm.load %8 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:         %16 = llvm.icmp "slt" %15, %4 : i32
+// CHECK-RESTRUCTURE-NEXT:         llvm.cond_br %16, ^bb2, ^bb3
+// CHECK-RESTRUCTURE-NEXT:       ^bb2:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:         %17 = llvm.load %8 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:         %18 = llvm.call @printf(%6, %17) : (!llvm.ptr, i32) -> i32
+// CHECK-RESTRUCTURE-NEXT:         %19 = llvm.load %8 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:         %20 = llvm.add %19, %2  : i32
+// CHECK-RESTRUCTURE-NEXT:         llvm.store %20, %8 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:         llvm.br ^bb4
+// CHECK-RESTRUCTURE-NEXT:       ^bb3:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:         clift.goto %1 !clift.label
+// CHECK-RESTRUCTURE-NEXT:       ^bb4:  // pred: ^bb2
+// CHECK-RESTRUCTURE-NEXT:         "clift.continue"() : () -> ()
+// CHECK-RESTRUCTURE-NEXT:       } ^bb4
+// CHECK-RESTRUCTURE-NEXT:     ^bb3:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:       %11 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %12 = llvm.call @printf(%6, %11) : (!llvm.ptr, i32) -> i32
+// CHECK-RESTRUCTURE-NEXT:       %13 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %14 = llvm.add %13, %2  : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.store %14, %7 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb2
+// CHECK-RESTRUCTURE-NEXT:     ^bb4:  // pred: ^bb2
+// CHECK-RESTRUCTURE-NEXT:       clift.assign_label %1 !clift.label
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb6
+// CHECK-RESTRUCTURE-NEXT:     ^bb5:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:       clift.goto %0 !clift.label
+// CHECK-RESTRUCTURE-NEXT:     ^bb6:  // pred: ^bb4
+// CHECK-RESTRUCTURE-NEXT:       "clift.continue"() : () -> ()
+// CHECK-RESTRUCTURE-NEXT:     } ^bb1
+// CHECK-RESTRUCTURE-NEXT:   }
+// CHECK-RESTRUCTURE-COM:   llvm.func @printf(!llvm.ptr, ...) -> i32 attributes {passthrough = [["frame-pointer", "all"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]}
+// CHECK-RESTRUCTURE-NEXT: }
