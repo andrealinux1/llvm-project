@@ -193,6 +193,11 @@ void CombCliftImpl<NodeT>::performCombOperation(
   // The comb analysis should run on each of the previously inserted
   // `DummyDominators`.
   for (NodeT *DummyDominator : DummyDominators) {
+
+    // Debug print which dummy dominator we are inspecting with the current run.
+    llvm::dbgs() << "\nPerfoming analysis on dummy dominator: ";
+    printBlock(DummyDominator);
+
     // Instantiate a DFS visit, using the `ext` set in order to stop the
     // visit
     // at the immediate post dominator node. If we cannot find the
