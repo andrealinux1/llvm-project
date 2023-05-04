@@ -1,0 +1,105 @@
+// RUN: mlir-opt -restructure-clift %s | FileCheck %s -check-prefix=CHECK-RESTRUCTURE
+
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<i64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f80, dense<128> : vector<2xi32>>, #dlti.dl_entry<i1, dense<8> : vector<2xi32>>, #dlti.dl_entry<i8, dense<8> : vector<2xi32>>, #dlti.dl_entry<i16, dense<16> : vector<2xi32>>, #dlti.dl_entry<i32, dense<32> : vector<2xi32>>, #dlti.dl_entry<f16, dense<16> : vector<2xi32>>, #dlti.dl_entry<f64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f128, dense<128> : vector<2xi32>>>} {
+  llvm.mlir.global private unnamed_addr constant @".str"("%d\00") {addr_space = 0 : i32, alignment = 1 : i64, dso_local}
+  llvm.func @foo(%arg0: i32, %arg1: i32) attributes {passthrough = ["noinline", "nounwind", ["uwtable", "2"], ["frame-pointer", "all"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]} {
+    %0 = llvm.mlir.constant(1 : i32) : i32
+    %1 = llvm.mlir.constant(100 : i32) : i32
+    %2 = llvm.mlir.constant(10 : i32) : i32
+    %3 = llvm.mlir.constant("%d\00") : !llvm.array<3 x i8>
+    %4 = llvm.mlir.addressof @".str" : !llvm.ptr
+    %5 = llvm.alloca %0 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+    %6 = llvm.alloca %0 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+    llvm.store %arg0, %5 : i32, !llvm.ptr
+    llvm.store %arg1, %6 : i32, !llvm.ptr
+    llvm.br ^bb1
+  ^bb1:  // 2 preds: ^bb0, ^bb6
+    %7 = llvm.load %5 : !llvm.ptr -> i32
+    %8 = llvm.icmp "slt" %7, %1 : i32
+    llvm.cond_br %8, ^bb2, ^bb7
+  ^bb2:  // pred: ^bb1
+    %9 = llvm.load %5 : !llvm.ptr -> i32
+    %10 = llvm.icmp "slt" %9, %2 : i32
+    llvm.cond_br %10, ^bb3, ^bb5
+  ^bb3:  // pred: ^bb2
+    %11 = llvm.load %6 : !llvm.ptr -> i32
+    %12 = llvm.icmp "slt" %11, %2 : i32
+    llvm.cond_br %12, ^bb4, ^bb5
+  ^bb4:  // pred: ^bb3
+    %13 = llvm.load %5 : !llvm.ptr -> i32
+    %14 = llvm.call @printf(%4, %13) : (!llvm.ptr, i32) -> i32
+    %15 = llvm.load %5 : !llvm.ptr -> i32
+    %16 = llvm.add %15, %0  : i32
+    llvm.store %16, %5 : i32, !llvm.ptr
+    llvm.br ^bb6
+  ^bb5:  // 2 preds: ^bb2, ^bb3
+    %17 = llvm.load %6 : !llvm.ptr -> i32
+    %18 = llvm.call @printf(%4, %17) : (!llvm.ptr, i32) -> i32
+    %19 = llvm.load %6 : !llvm.ptr -> i32
+    %20 = llvm.add %19, %0  : i32
+    llvm.store %20, %6 : i32, !llvm.ptr
+    llvm.br ^bb6
+  ^bb6:  // 2 preds: ^bb4, ^bb5
+    llvm.br ^bb1
+  ^bb7:  // pred: ^bb1
+    llvm.return
+  }
+  llvm.func @printf(!llvm.ptr, ...) -> i32 attributes {passthrough = [["frame-pointer", "all"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]}
+}
+
+// CHECK-RESTRUCTURE-LABEL: module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<i64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f80, dense<128> : vector<2xi32>>, #dlti.dl_entry<i1, dense<8> : vector<2xi32>>, #dlti.dl_entry<i8, dense<8> : vector<2xi32>>, #dlti.dl_entry<i16, dense<16> : vector<2xi32>>, #dlti.dl_entry<i32, dense<32> : vector<2xi32>>, #dlti.dl_entry<f16, dense<16> : vector<2xi32>>, #dlti.dl_entry<f64, dense<64> : vector<2xi32>>, #dlti.dl_entry<f128, dense<128> : vector<2xi32>>>} {
+// CHECK-RESTRUCTURE-NEXT:   llvm.mlir.global private unnamed_addr constant @".str"("%d\00") {addr_space = 0 : i32, alignment = 1 : i64, dso_local}
+// CHECK-RESTRUCTURE-NEXT:   llvm.func @foo(%arg0: i32, %arg1: i32) attributes {passthrough = ["noinline", "nounwind", ["uwtable", "2"], ["frame-pointer", "all"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]} {
+// CHECK-RESTRUCTURE-NEXT:     %0 = clift.make_label !clift.label
+// CHECK-RESTRUCTURE-NEXT:     %1 = llvm.mlir.constant(1 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %2 = llvm.mlir.constant(100 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %3 = llvm.mlir.constant(10 : i32) : i32
+// CHECK-RESTRUCTURE-NEXT:     %4 = llvm.mlir.constant("%d\00") : !llvm.array<3 x i8>
+// CHECK-RESTRUCTURE-NEXT:     %5 = llvm.mlir.addressof @".str" : !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     %6 = llvm.alloca %1 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     %7 = llvm.alloca %1 x i32 {alignment = 4 : i64} : (i32) -> !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.store %arg0, %6 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.store %arg1, %7 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:     llvm.br ^bb2
+// CHECK-RESTRUCTURE-NEXT:   ^bb1:  // pred: ^bb2
+// CHECK-RESTRUCTURE-NEXT:     clift.assign_label %0 !clift.label
+// CHECK-RESTRUCTURE-NEXT:     llvm.return
+// CHECK-RESTRUCTURE-NEXT:   ^bb2:  // pred: ^bb0
+// CHECK-RESTRUCTURE-NEXT:     clift.loop {
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb1
+// CHECK-RESTRUCTURE-NEXT:     ^bb1:  // pred: ^bb0
+// CHECK-RESTRUCTURE-NEXT:       %8 = llvm.load %6 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %9 = llvm.icmp "slt" %8, %2 : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.cond_br %9, ^bb5, ^bb7
+// CHECK-RESTRUCTURE-NEXT:     ^bb2:  // 2 preds: ^bb4, ^bb5
+// CHECK-RESTRUCTURE-NEXT:       %10 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %11 = llvm.call @printf(%5, %10) : (!llvm.ptr, i32) -> i32
+// CHECK-RESTRUCTURE-NEXT:       %12 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %13 = llvm.add %12, %1  : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.store %13, %7 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb6
+// CHECK-RESTRUCTURE-NEXT:     ^bb3:  // pred: ^bb4
+// CHECK-RESTRUCTURE-NEXT:       %14 = llvm.load %6 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %15 = llvm.call @printf(%5, %14) : (!llvm.ptr, i32) -> i32
+// CHECK-RESTRUCTURE-NEXT:       %16 = llvm.load %6 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %17 = llvm.add %16, %1  : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.store %17, %6 : i32, !llvm.ptr
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb6
+// CHECK-RESTRUCTURE-NEXT:     ^bb4:  // pred: ^bb5
+// CHECK-RESTRUCTURE-NEXT:       %18 = llvm.load %7 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %19 = llvm.icmp "slt" %18, %3 : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.cond_br %19, ^bb3, ^bb2
+// CHECK-RESTRUCTURE-NEXT:     ^bb5:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:       %20 = llvm.load %6 : !llvm.ptr -> i32
+// CHECK-RESTRUCTURE-NEXT:       %21 = llvm.icmp "slt" %20, %3 : i32
+// CHECK-RESTRUCTURE-NEXT:       llvm.cond_br %21, ^bb4, ^bb2
+// CHECK-RESTRUCTURE-NEXT:     ^bb6:  // 2 preds: ^bb2, ^bb3
+// CHECK-RESTRUCTURE-NEXT:       llvm.br ^bb8
+// CHECK-RESTRUCTURE-NEXT:     ^bb7:  // pred: ^bb1
+// CHECK-RESTRUCTURE-NEXT:       clift.goto %0 !clift.label
+// CHECK-RESTRUCTURE-NEXT:     ^bb8:  // pred: ^bb6
+// CHECK-RESTRUCTURE-NEXT:       "clift.continue"() : () -> ()
+// CHECK-RESTRUCTURE-NEXT:     } ^bb1
+// CHECK-RESTRUCTURE-NEXT:   }
+// CHECK-RESTRUCTURE-COM:   llvm.func @printf(!llvm.ptr, ...) -> i32 attributes {passthrough = [["frame-pointer", "all"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"], ["target-features", "+cx8,+fxsr,+mmx,+sse,+sse2,+x87"], ["tune-cpu", "generic"]]}
+// CHECK-RESTRUCTURE-NEXT: }
