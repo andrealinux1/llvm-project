@@ -112,6 +112,10 @@ CombCliftImpl<NodeT>::collectConditionalBlocks(mlir::Region &LoopRegion) {
   }
   llvm::dbgs() << "\n";
 
+  // Reverse the conditional blocks so that they are inspected in post_order,
+  // since we process the worklist in a `pop_back` fashion.
+  std::reverse(ConditionalBlocks.begin(), ConditionalBlocks.end());
+
   return ConditionalBlocks;
 }
 
