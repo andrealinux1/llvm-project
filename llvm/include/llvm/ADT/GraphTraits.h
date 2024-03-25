@@ -100,6 +100,14 @@ struct Inverse {
   inline Inverse(const GraphType &G) : Graph(G) {}
 };
 
+// Undirected
+template <class GraphType>
+struct Undirected {
+  const GraphType &Graph;
+
+  inline Undirected(const GraphType &G) : Graph(G) {}
+};
+
 // Provide a partial specialization of GraphTraits so that the inverse of an
 // inverse falls back to the original graph.
 template <class T> struct GraphTraits<Inverse<Inverse<T>>> : GraphTraits<T> {};
