@@ -117,10 +117,7 @@ struct SemiNCAInfoOnView {
     using DirectedNodeT =
         std::conditional_t<Inversed, Inverse<View<NodePtr>>, View<NodePtr>>;
     using VectRet = SmallVector<NodePtr, 8>;
-    VectRet Res;
-    for (NodePtr Child : children<DirectedNodeT>(N)) {
-      Res.push_back(Child);
-    }
+    VectRet Res = VectRet(children<DirectedNodeT>(N));
     if (not Inversed)
       std::reverse(Res.begin(), Res.end());
 
