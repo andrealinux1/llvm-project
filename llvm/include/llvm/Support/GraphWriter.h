@@ -19,6 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+//#pragma clang optimize off
+
 #ifndef LLVM_SUPPORT_GRAPHWRITER_H
 #define LLVM_SUPPORT_GRAPHWRITER_H
 

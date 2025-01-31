@@ -43,6 +43,17 @@ public:
 
   IteratorT begin() const { return begin_iterator; }
   IteratorT end() const { return end_iterator; }
+
+#if 0
+  IteratorT begin() & const { return begin_iterator; }
+  IteratorT end() & const { return end_iterator; }
+#endif
+
+#if 0
+  IteratorT begin() && { return std::move(begin_iterator); }
+  IteratorT end() && { return std::move(end_iterator); }
+#endif
+
   bool empty() const { return begin_iterator == end_iterator; }
 };
 
